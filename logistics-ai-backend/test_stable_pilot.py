@@ -187,6 +187,32 @@ class FinanceRejectionTests(unittest.TestCase):
             self.assertEqual([tuple(c) for c in candidates], [("F-2002", "已确认", None)])
             self.assertEqual(con.execute("SELECT rev FROM work_state").fetchone()[0], 70)
 
+    def test_reasoned_reversal_creates_candidate_but_does_not_change_ledger(self):
+        args = {"fee_id": "F-2001", "status": "作废", "reason": "合成测试：费用录入错误"}
+        executor = app.V3Tools()
+        schema = next(t["function"]["parameters"] for t in executor.list_tools(
+            tenant_id=app.TENANT_ID, principal_id="test-owner")
+            if t["function"]["name"] == "update_fee_status")
+        self.assertIn("作废", schema["properties"]["status"]["enum"])
+        self.assertIn("reason", schema["properties"])
+        result = executor.execute("update_fee_status", {**args, "reason": ""},
+                                  tenant_id=app.TENANT_ID, principal_id="test-owner",
+                                  idempotency_key="missing-reason")
+        self.assertEqual(result["error"], "reversal_reason_required")
+        with patch.object(finance_confirmation, "_fee_types", return_value={"进仓费"}):
+            candidate = executor.execute("update_fee_status", args, tenant_id=app.TENANT_ID,
+                                         principal_id="test-owner", idempotency_key="void-1")
+            repeated = executor.execute("update_fee_status", args, tenant_id=app.TENANT_ID,
+                                        principal_id="test-owner", idempotency_key="void-1")
+        self.assertEqual(candidate, repeated)
+        self.assertIn("candidate_id", candidate)
+        with app.db() as con:
+            rows = con.execute("SELECT target_status,completed_at FROM finance_candidates").fetchall()
+            self.assertEqual([tuple(r) for r in rows], [("__void__"+args["reason"], None)])
+            row = con.execute("SELECT rev,payload FROM work_state").fetchone()
+            self.assertEqual(row["rev"], 70)
+            self.assertEqual(json.loads(json.loads(row["payload"])[app.STATE_KEYS[4]])[0]["status"], "已确认")
+
     def test_uncertain_execution_failure_is_not_treated_as_business_rejection(self):
         service = self.service(Model([]))
         cid = self.store.create_or_check(self.request)
