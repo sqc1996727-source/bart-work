@@ -34,7 +34,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent
-DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data")).expanduser().resolve()
+import product_profile
+PRODUCT = product_profile.load(ROOT)
+TENANT_ID = PRODUCT["tenant_id"]
+DATA_DIR = PRODUCT["data_dir"]
 DB_PATH = DATA_DIR / "julong.sqlite3"
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "3000"))
@@ -122,6 +125,7 @@ def db() -> sqlite3.Connection:
 
 def init_db() -> None:
     with db() as con:
+        product_profile.bind_database(con, PRODUCT)
         con.executescript("""
         CREATE TABLE IF NOT EXISTS users (
           id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL DEFAULT 'julong-test', username TEXT NOT NULL UNIQUE, name TEXT NOT NULL,
@@ -214,7 +218,8 @@ def init_db() -> None:
         con.execute("INSERT OR IGNORE INTO work_state(id,rev,updated_at,updated_by,payload) VALUES(1,0,'','','{}')")
     integrity.initialize(sys.modules[__name__])
     agent_runtime.initialize(sys.modules[__name__])
-    _import_legacy_state_if_empty()
+    if TENANT_ID == product_profile.LEGACY_ID:
+        _import_legacy_state_if_empty()
     from ingestion.handler import configure as configure_ingestion
     configure_ingestion(db_factory=db,data_dir=DATA_DIR,audit_fn=audit,state_keys=STATE_KEYS,now_fn=now_iso)
 
@@ -274,7 +279,7 @@ def add_user(username: str, name: str, role: str, password: str) -> None:
     salt, digest = hash_password(password)
     with db() as con:
         con.execute("INSERT INTO users(id,tenant_id,username,name,role,password_salt,password_hash,created_at) VALUES(?,?,?,?,?,?,?,?)",
-                    (secrets.token_urlsafe(16), "julong-test", username, name.strip()[:80] or username,
+                    (secrets.token_urlsafe(16), TENANT_ID, username, name.strip()[:80] or username,
                      role, salt, digest, now_iso()))
 
 
@@ -1126,14 +1131,14 @@ def _authenticated_persona(*, tenant_id, principal_id):
             bot_state_text = "\n\n你最近的任务状态（历史扫描可用 get_daily_routine_scan 按 scan_id 读取；状态可能变化）：" + json.dumps(pending, ensure_ascii=False)
     except Exception:
         pass
-    return core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
+    return "当前企业："+PRODUCT["name"]+"；行业："+PRODUCT["industry"]+"。\n"+core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
 
 
 class WorkbenchContext:
     authenticated_persona = staticmethod(_authenticated_persona)
     """Read-only evidence adapter; every lookup is scoped to the logged-in enterprise."""
     def retrieve(self, query, *, tenant_id, principal_id, memory_scope):
-        if tenant_id != "julong-test": return []
+        if tenant_id != TENANT_ID: return []
         with db() as con:
             user=con.execute("SELECT id,name,role,tenant_id FROM users WHERE id=? AND tenant_id=? AND active=1",(principal_id,tenant_id)).fetchone()
             row=con.execute("SELECT payload FROM work_state WHERE id=1").fetchone()
@@ -1223,7 +1228,7 @@ class WorkbenchTools:
     supports_idempotency = True
 
     def _principal(self, tenant_id, principal_id):
-        if tenant_id != "julong-test": return None
+        if tenant_id != TENANT_ID: return None
         with db() as con:
             return con.execute("SELECT * FROM users WHERE id=? AND tenant_id=? AND active=1",(principal_id,tenant_id)).fetchone()
 
@@ -1404,7 +1409,7 @@ class V3Context:
         return result
 
     def retrieve(self, query, *, tenant_id, principal_id, memory_scope):
-        if tenant_id != "julong-test": return []
+        if tenant_id != TENANT_ID: return []
         with db() as con:
             user=con.execute("SELECT id,name,role,tenant_id FROM users WHERE id=? AND tenant_id=? AND active=1",(principal_id,tenant_id)).fetchone()
             state_row=con.execute("SELECT payload,rev FROM work_state WHERE id=1").fetchone()
@@ -2346,6 +2351,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if path == "/health":
             self._send(200, {"status": "ok"}); return
+        if path in {"/workspace","/workspace/","/workspace/live.js"}:
+            name = "live.js" if path.endswith("/live.js") else "index.html"
+            folder = ROOT / "frontend" / "shared"
+            target = folder / name
+            try:
+                if folder.is_symlink() or target.is_symlink():
+                    raise OSError("symlinked static root")
+                resolved = target.resolve(strict=True)
+                resolved.relative_to(folder.resolve(strict=True))
+                self._send(200, resolved.read_bytes(), "text/javascript; charset=utf-8" if name.endswith(".js") else "text/html; charset=utf-8")
+            except (OSError, ValueError):
+                self._send(503, {"error": "frontend_not_ready"})
+            return
         if path in {"/agent-v4","/agent-v4/"} or path.startswith("/agent-v4/assets/"):
             allowed={"/agent-v4/assets/window.css":("window.css","text/css; charset=utf-8"),
                      "/agent-v4/assets/app.js":("app.js","text/javascript; charset=utf-8"),
@@ -2429,7 +2447,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 self._send(200,info);return
             if path=='/api/agent/ui/bootstrap':
-                self._send(200,{"user":{"id":user["id"],"display_name":user["name"],"salutation":agent_runtime.preferences(sys.modules[__name__],dict(user)).get("salutation",user["name"]),"role":user["role"]},"suggestions":integrity.suggestions(sys.modules[__name__],dict(user)),"capabilities":{"attachments":True,"voice":(ROOT/"models"/"whisper-tiny"/".ready.json").exists(),"financial_analysis":_finance_scope(dict(user))!="none","skills":True,"durable_jobs":True,"team_operations":True}}); return
+                self._send(200,{**product_profile.public_profile(PRODUCT, user['role']),"user":{"id":user["id"],"display_name":user["name"],"salutation":agent_runtime.preferences(sys.modules[__name__],dict(user)).get("salutation",user["name"]),"role":user["role"]},"suggestions":integrity.suggestions(sys.modules[__name__],dict(user)),"capabilities":{"attachments":True,"voice":(ROOT/"models"/"whisper-tiny"/".ready.json").exists(),"financial_analysis":_finance_scope(dict(user))!="none","skills":True,"durable_jobs":True,"team_operations":True}}); return
             if path=='/api/agent/today':
                 # 「Bot 先开口」：确定性扫账，不烧 token，给前端第一屏直接展示「今天该盯的事」。
                 result=agent_routine.run(sys.modules[__name__],dict(user),limit=20)
@@ -3131,7 +3149,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         user_id=secrets.token_urlsafe(16)
         try:
             with db() as con:
-                con.execute("INSERT INTO users(id,tenant_id,username,name,role,password_salt,password_hash,created_at) VALUES(?,?,?,?,?,?,?,?)",(user_id,"julong-test",username,name.strip()[:80] or username,role,salt,digest,now_iso()))
+                con.execute("INSERT INTO users(id,tenant_id,username,name,role,password_salt,password_hash,created_at) VALUES(?,?,?,?,?,?,?,?)",(user_id,TENANT_ID,username,name.strip()[:80] or username,role,salt,digest,now_iso()))
                 audit(con,user,"user.create","user",user_id,{"username":username,"role":role})
         except sqlite3.IntegrityError:
             self._send(409,{"error":"username_exists"}); return
