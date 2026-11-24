@@ -1,6 +1,6 @@
 /* Shared app shell, live authenticated API; no demo data or timer-driven success. */
 'use strict';
-const live={boot:null,today:null,jobs:[],followups:[],history:[],notifications:[],conversation:null,messages:[],selected:null,detail:null,error:'',loading:true,attachmentIds:[],uploading:false,posting:false,pending:null,watch:null,poll:null,epoch:0,watchEpoch:0,scope:'enterprise',financeItems:[],financeReview:null,users:[],editingUser:null};
+const live={boot:null,today:null,jobs:[],followups:[],history:[],notifications:[],conversation:null,messages:[],selected:null,detail:null,error:'',loading:true,attachmentIds:[],uploading:false,posting:false,pending:null,watch:null,poll:null,epoch:0,watchEpoch:0,scope:'enterprise',financeItems:[],financeReview:null,voidDraft:null,users:[],editingUser:null};
 const activeStates=new Set(['queued','running']);
 const labels={queued:'等待执行',running:'正在处理',succeeded:'答复已返回',failed:'未完成',cancelled:'已停止',interrupted:'服务中断',pending:'等待跟进',paused:'已暂停',done:'已完成'};
 const roleNames={owner_finance:'企业负责人',dispatcher:'管理人员',employee:'业务员工'};
@@ -18,7 +18,7 @@ async function api(path,body,headers={},method='POST'){
 }
 function fail(e){live.error=e.message||'操作未完成';if(e.code==='invalid_credentials'){live.error='账号或密码错误，请重新输入'}else if(e.code==='login_rate_limited'){live.error='登录尝试过于频繁，请稍后再试'}else if(e.status===401){resetSession();live.error='登录已过期，请重新登录'}render()}
 function stopWatch(){live.watchEpoch++;if(live.watch)live.watch.close();clearInterval(live.poll);live.watch=null;live.poll=null}
-function resetSession(){stopWatch();live.epoch++;Object.assign(live,{boot:null,today:null,jobs:[],followups:[],history:[],notifications:[],conversation:null,messages:[],selected:null,detail:null,attachmentIds:[],pending:null,posting:false,uploading:false,loading:false,scope:'enterprise',financeItems:[],financeReview:null,users:[],editingUser:null});modules.splice(0);view='home';closeSheet();$('prompt').value='';$('file').value=''}
+function resetSession(){stopWatch();live.epoch++;Object.assign(live,{boot:null,today:null,jobs:[],followups:[],history:[],notifications:[],conversation:null,messages:[],selected:null,detail:null,attachmentIds:[],pending:null,posting:false,uploading:false,loading:false,scope:'enterprise',financeItems:[],financeReview:null,voidDraft:null,users:[],editingUser:null});modules.splice(0);view='home';closeSheet();$('prompt').value='';$('file').value=''}
 function organization(){return live.boot?.organization?.name||'企业工作空间'}
 function sidebar(){
  const org=esc(organization()),u=live.boot?.user||{};
@@ -57,13 +57,14 @@ function listHTML(){if(view==='history')return title('工作记录','从历史�
 }
 function scopeControls(){return '<div class="live-tools"><button class="secondary" '+(live.scope==='enterprise'?'disabled':'')+' onclick="changeScope(\'enterprise\')">企业工作</button><button class="secondary" '+(live.scope==='personal'?'disabled':'')+' onclick="changeScope(\'personal\')">个人工作</button></div>'}
 async function changeScope(scope){if(live.pending||live.posting||live.uploading||activeStates.has(live.selected?.state)){live.error='当前工作尚未结束，请完成后切换记忆范围';render();return}stopWatch();live.scope=scope;live.conversation=null;live.messages=[];live.selected=null;live.attachmentIds=[];$('prompt').value='';await go(view==='history'?'history':'new')}
-function moduleActions(m){let a='';if(m[0]==='finance')a+='<button class="secondary" onclick="loadFinance()">审阅费用与对账候选</button>';if((m[0]==='transport'||m[0]==='receipt')&&modules.some(x=>x[0]==='transport'))a+='<a class="secondary live-link" href="/manual-v9">人工录入与业务操作</a>';return a}
+function moduleActions(m){let a='';if(m[0]==='finance')a+='<button class="secondary" onclick="loadFinance()">审阅费用与对账候选</button><button class="secondary" onclick="openSheet(\'feeVoid\')">作废已确认费用</button>';if((m[0]==='transport'||m[0]==='receipt')&&modules.some(x=>x[0]==='transport'))a+='<a class="secondary live-link" href="/manual-v9">人工录入与业务操作</a>';return a}
 function sheetHTML(id){let [type,idx]=id.split(':'),i=Number(idx),heading='详情',body='',k='file';
  if(type==='module'){const m=modules[i];heading=m?.[2]||'业务';k=m?.[1]||'file';body=m?'<h2>'+esc(m[2])+'</h2><p>'+esc(m[3])+'</p><div class="sheetactions"><button class="primary" onclick="launch('+arg(m[4])+')">交给 AI 处理</button>'+moduleActions(m)+'</div>':empty('此入口未开通')}
  else if(type==='case'){const c=arr(live.today?.routine?.routine_candidates)[i];heading=c?.kind||'待核实事项';body=c?'<h2>'+esc(heading)+'</h2><p class="livecopy">'+esc(c.evidence||'')+'</p>'+field('业务编号',esc(c.waybill_number||'—'))+'<div class="sheetactions"><button class="primary" onclick="launch('+arg('调查以下待核实事项并整理证据：'+c.kind+' '+(c.waybill_number||''))+')">交给 AI 调查</button>'+(c.waybill_number?'<button class="secondary" onclick="loadCase('+arg(c.waybill_number)+')">查看记录</button>':'')+'</div>':empty('记录不存在')}
  else if(type==='group'){const g=Object.entries(live.today?.routine?.by_routine||{})[i];heading=g?.[0]||'事项';body='<h2>'+esc(heading)+'</h2>'+arr(live.today?.routine?.routine_candidates).map((c,n)=>c.routine===heading?row(c.kind,c.waybill_number,'openSheet(\'case:'+n+'\',this)'):'').join('')}
  else if(type==='follow'){const f=live.followups[i];heading='持续跟进';body=f?'<h2>'+esc(f.title)+'</h2>'+field('状态',esc(labels[f.state]||f.state))+field('计划时间',esc(stamp(f.due_at)))+'<div class="sheetactions">'+(['pending','paused'].includes(f.state)?'<button class="primary" onclick="manageFollow('+arg(f.id)+','+arg(f.state==='paused'?'resume':'pause')+')">'+(f.state==='paused'?'恢复':'暂停')+'</button><button class="secondary" onclick="manageFollow('+arg(f.id)+',\'cancel\')">取消跟进</button>':'')+'</div>':empty('任务不存在')}
  else if(type==='finance'){heading='财务确认';body=financeListHTML()}
+ else if(type==='feeVoid'){heading='费用作废';body=feeVoidHTML()}
  else if(type==='financeReview'){heading='审阅与确认';body=financeReviewHTML()}
  else if(type==='users'){heading='企业账号';body=usersHTML()}
  else if(type==='userEdit'){heading='账号设置';body=userEditHTML()}
@@ -124,6 +125,27 @@ function watch(id){
  check();
 }
 async function toggleJob(){const j=live.selected;if(!j||!activeStates.has(j.state))return;try{live.selected=await api('/api/agent/jobs/'+encodeURIComponent(j.id)+'/cancel',{});render()}catch(e){fail(e)}}
+function feeVoidHTML(){
+ return '<h2>作废已确认费用</h2><p>请输入费用唯一编号和实际作废原因。此步骤仅生成候选，必须再次审阅并验证密码才写入账本；原始记录保留。</p><form class="liveform" onsubmit="createVoidCandidate(event)"><label>费用编号<input name="fee_id" required maxlength="80" autocomplete="off"></label><label>作废原因<input name="reason" required maxlength="300" autocomplete="off"></label><label>当前账号密码<input type="password" name="password" required autocomplete="current-password"></label><button class="primary" type="submit">生成作废候选</button><p class="live-error" data-form-error role="alert"></p></form>'
+}
+async function createVoidCandidate(e){
+ e.preventDefault();const f=e.currentTarget,b=f.querySelector('button'),error=f.querySelector('[data-form-error]'),epoch=live.epoch;
+ if(b.disabled||!live.boot?.capabilities?.financial_analysis)return;
+ const fields=new FormData(f),body={kind:'fee',fee_id:String(fields.get('fee_id')).trim(),status:'作废',reason:String(fields.get('reason')).trim()};
+ if(!body.fee_id||!body.reason){error.textContent='请填写费用编号和原因';return}
+ const fingerprint=JSON.stringify(body);
+ if(live.voidDraft&&live.voidDraft.fingerprint!==fingerprint){error.textContent='上一笔作废候选提交结果未知，请先使用原编号和原因重试';return}
+ const draft=live.voidDraft||(live.voidDraft={fingerprint,key:key()});
+ b.disabled=true;error.textContent='';
+ try{
+  const result=await api('/api/finance/candidates',{...body,password:fields.get('password')},{'Idempotency-Key':draft.key});
+  if(epoch!==live.epoch)return;live.voidDraft=null;f.reset();await loadFinanceReview(result.candidate_id);
+ }catch(err){
+  if(epoch!==live.epoch)return;
+  if(err.status&&err.status<500)live.voidDraft=null;
+  error.textContent=err.status===403?'密码错误或无操作权限':err.message;
+ }finally{f.querySelector('[name=password]').value='';b.disabled=false}
+}
 async function loadFinance(){if(!live.boot?.capabilities?.financial_analysis)return;const epoch=live.epoch;try{const d=await api('/api/finance/candidates');if(epoch!==live.epoch)return;live.financeItems=arr(d.items);openSheet('finance')}catch(e){if(epoch===live.epoch)fail(e)}}
 function financeListHTML(){return '<h2>待人工确认</h2><p>候选由业务流程生成，确认前不会修改账本。</p>'+live.financeItems.map(c=>row(c.kind==='difference'?'对账差异':'费用确认',c.record_id||'', 'loadFinanceReview('+arg(c.candidate_id)+')','money')).join('')+(live.financeItems.length?'':empty('暂无有效待确认候选'))}
 async function loadFinanceReview(id){const epoch=live.epoch;try{const d=await api('/api/finance/candidates/'+encodeURIComponent(id));if(epoch!==live.epoch)return;live.financeReview=d;openSheet('financeReview')}catch(e){if(epoch===live.epoch)fail(e)}}
