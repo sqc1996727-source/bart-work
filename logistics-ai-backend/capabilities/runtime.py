@@ -403,26 +403,27 @@ def find_records(host,user,args):
   with store._connect() as con:
    rows=con.execute("""SELECT m.id,m.conversation_id,m.role,m.content,m.created_at FROM messages m
        JOIN conversations c ON c.id=m.conversation_id
-       WHERE c.tenant_id=? AND c.principal_id=? AND c.memory_scope=? AND c.id!=?
-       AND substr(c.id,1,?)=? AND m.role IN ('user','assistant')
+       WHERE c.tenant_id=? AND c.principal_id=? AND c.memory_scope=?
+       AND (c.id!=? OR m.id<(SELECT max(id) FROM messages WHERE conversation_id=c.id))
+       AND substr(c.id,1,?)=? AND m.role='user'
        ORDER BY m.id DESC""",(user['tenant_id'],user['id'],scope,current,len(host._V3_CONVERSATION_PREFIX),host._V3_CONVERSATION_PREFIX)).fetchall()
   ranked=[]
   for row in rows:
-   content=str(row['content'])
-   if not safe(content) or relevance(terms,content)<2:continue
-   ranked.append((score(content),row))
+   content=str(row['content']).split('\n\n本轮附件（由用户提供，可按需使用read_files读取）：',1)[0]
+   if relevance(terms,content)<2 or not safe(content):continue
+   ranked.append((score(content),row,content))
   ranked.sort(key=lambda item:item[0],reverse=True)
   checked={};seen=set()
-  for match,row in ranked:
+  for match,row,content in ranked:
    cid=row['conversation_id']
    if cid in seen:continue
    if cid not in checked:checked[cid]=host.integrity.conversation_allowed(host,user,cid)
    if not checked[cid]:continue
    seen.add(cid)
-   candidates.append({'kind':'conversation','id':cid,'message_id':row['id'],'role':row['role'],'text':row['content'][:600],'score':match,'created_at':row['created_at']})
+   candidates.append({'kind':'conversation','id':cid,'message_id':row['id'],'role':row['role'],'text':content[:600],'score':match,'created_at':row['created_at']})
    if len(seen)>=limit:break
  candidates.sort(key=lambda c:c['score'],reverse=True)
- return {'items':candidates[:limit],'candidate_only':True,'coverage':{'waybills':'current_authorized_records','files':'authorized_nonsensitive_filenames_only','conversations':'own_current_scope_nonsensitive_history_only'},'note':'匹配仅是候选；历史原话和文件名不是当前业务事实，需重新核查。'}
+ return {'items':candidates[:limit],'candidate_only':True,'coverage':{'waybills':'current_authorized_records','files':'authorized_nonsensitive_filenames_only','conversations':'own_current_scope_nonsensitive_user_history_only'},'note':'匹配仅是候选；历史原话和文件名不是当前业务事实，需重新核查。'}
 
 
 def preference_action(host,user,args):
