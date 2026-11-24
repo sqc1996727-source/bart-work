@@ -472,7 +472,7 @@ class ConversationStore:
 
     def fail_tool(self, event_id: str, code: str) -> None:
         with self._connect() as db:
-            db.execute("UPDATE tool_events SET state='failed',error_code=?,updated_at=? WHERE id=?", (code[:80], time.time(), event_id))
+            db.execute("UPDATE tool_events SET state='failed',result_json=NULL,error_code=?,updated_at=? WHERE id=?", (code[:80], time.time(), event_id))
 
 
 SYSTEM_TEMPLATE = """你是当前已认证企业的业务助手。企业身份、业务口径和岗位权限以当前服务端上下文为准。只根据提供的证据回答；查询正常且授权范围内没有记录时可以直接回答没有；查询失败或无权访问要如实区分；确实需要补充信息时简短问一句。
@@ -925,7 +925,19 @@ class AIService:
                 raise AIServiceError("TOOL_RECOVERY_BLOCKED","已完成工具结果格式无效，未重新执行。")
             return cached
         if event["state"] == "failed":
-            raise AIServiceError("TOOL_RECOVERY_BLOCKED","该工具调用已失败，未在同一请求中重复执行。")
+            # A persisted, explicit business rejection is a completed tool
+            # response, not an uncertain execution fault. Replay the response
+            # without executing the operation again. Cancellation, crashes and
+            # ambiguous failures have no result_json and remain blocked.
+            try:
+                rejection = json.loads(event["result_json"]) if event["result_json"] else None
+            except (TypeError, ValueError):
+                rejection = None
+            if (isinstance(rejection, Mapping)
+                    and isinstance(rejection.get("error"), str)
+                    and rejection["error"][:80] == event["error_code"]):
+                return {**rejection, "replayed_rejection": True}
+            raise AIServiceError("TOOL_RECOVERY_BLOCKED","该工具调用存在执行故障或结果不确定，未重复执行。")
         if not getattr(self.tool_executor, "supports_idempotency", False):
             self.store.fail_tool(event["id"], "IDEMPOTENCY_REQUIRED")
             raise AIServiceError("TOOL_EXECUTOR_UNSAFE", "工具执行器未声明幂等保护，操作已阻止。")
