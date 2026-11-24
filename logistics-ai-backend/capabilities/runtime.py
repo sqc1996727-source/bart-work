@@ -94,6 +94,7 @@ def submit(host,user,payload,key):
  if cid:
   record=host._v3_ai_service().store.get_conversation(tenant_id=user['tenant_id'],principal_id=user['id'],conversation_id=cid,limit=1)
   if not record or not host.integrity.conversation_allowed(host,user,cid):raise LookupError('not_found')
+  if payload.get('memory_scope', 'enterprise') != record['memory_scope']:raise ValueError('conversation_scope_mismatch')
  else:payload={**payload,'conversation_id':host._v3_new_conversation(user,payload.get('memory_scope','enterprise'))}
  now=host.now_iso();jid=secrets.token_urlsafe(18)
  with host.db() as con:
@@ -127,8 +128,9 @@ def run_one(host):
   con.execute("UPDATE agent_jobs SET state='running',progress='正在处理',updated_at=? WHERE id=?",(now,row['id']))
   con.execute("INSERT INTO agent_job_checkpoints(job_id,stage,tool_started,updated_at) VALUES(?,'claimed',0,?) ON CONFLICT(job_id) DO UPDATE SET stage='claimed',tool_started=0,updated_at=excluded.updated_at",(row['id'],now));con.commit()
  user=get_user(host,row['owner_id'],row['tenant_id']);token=CURRENT_JOB.set((host,row['id']))
- from ai.service import OBSERVER
+ from ai.service import OBSERVER, EXECUTION_JOB_ID
  observer_token=OBSERVER.set(checkpoint)
+ execution_token=EXECUTION_JOB_ID.set(row['id'])
  try:
   if not user or RANK[user['role']]<row['role_rank'] or (row['request_key'].startswith('scheduled:') and RANK[user['role']]!=row['role_rank']):status,result=403,{'error':'permission_changed','message':'账号权限已变化，请重新交办。'}
   else:status,result=host._v3_chat(user,json.loads(row['payload']))
@@ -139,8 +141,12 @@ def run_one(host):
     notice='交办的事情已处理完，点开接着看。' if state=='succeeded' else '工作未完成，已保留实际执行记录，请查看后续事项。'
     con.execute('INSERT OR IGNORE INTO agent_notifications VALUES(?,?,?,?,?,?,?,?,0)',(secrets.token_urlsafe(16),row['tenant_id'],row['owner_id'],row['role_rank'],'job:'+row['id'],json.loads(row['payload'])['conversation_id'],notice,host.now_iso()))
  except Exception:
-  with host.db() as con:con.execute("UPDATE agent_jobs SET state='failed',progress='处理遇到问题，原资料仍保留',updated_at=? WHERE id=?",(host.now_iso(),row['id']))
- finally:CURRENT_JOB.reset(token);OBSERVER.reset(observer_token)
+  import logging
+  logging.getLogger(__name__).error("Job failed outside normal completion: %s", row['id'])
+  with host.db() as con:
+   con.execute("UPDATE agent_jobs SET state='failed',progress='处理遇到问题，原资料仍保留',updated_at=? WHERE id=?",(host.now_iso(),row['id']))
+   con.execute('INSERT OR IGNORE INTO agent_notifications VALUES(?,?,?,?,?,?,?,?,0)',(secrets.token_urlsafe(16),row['tenant_id'],row['owner_id'],row['role_rank'],'job:'+row['id'],json.loads(row['payload'])['conversation_id'],'工作未完成，请查看任务状态。',host.now_iso()))
+ finally:CURRENT_JOB.reset(token);OBSERVER.reset(observer_token);EXECUTION_JOB_ID.reset(execution_token)
  return True
 
 def tick(host,now=None):
@@ -380,7 +386,7 @@ def find_records(host,user,args):
  def safe(text):
   # Historical unstructured material is not a route around finance boundaries.
   return not workplace_memory.sensitive(host,text)
- if kind in {'all','waybills'}:
+ if kind in {'all','waybills'} and host._module_enabled('transport'):
   for raw in host._v3_raw_rows(0):
    if not team.allowed(host,user,raw):continue
    item=host.V3Context._pick(raw,host.V3Context._WAYBILL_FIELDS);text=json.dumps(item,ensure_ascii=False)
@@ -410,7 +416,7 @@ def find_records(host,user,args):
        WHERE c.tenant_id=? AND c.principal_id=? AND c.memory_scope=?
        AND (c.id!=? OR m.id<(SELECT max(id) FROM messages WHERE conversation_id=c.id))
        AND substr(c.id,1,?)=? AND m.role='user'
-       ORDER BY m.id DESC""",(user['tenant_id'],user['id'],scope,current,len(host._V3_CONVERSATION_PREFIX),host._V3_CONVERSATION_PREFIX)).fetchall()
+       ORDER BY m.id DESC LIMIT 2000""",(user['tenant_id'],user['id'],scope,current,len(host._V3_CONVERSATION_PREFIX),host._V3_CONVERSATION_PREFIX)).fetchall()
   ranked=[]
   for row in rows:
    content=str(row['content']).split('\n\n本轮附件（由用户提供，可按需使用read_files读取）：',1)[0]
@@ -506,6 +512,8 @@ def schedule(host,user,args,key):
  sched=str(args.get('schedule','') or '').strip()
  routine_kind=str(args.get('routine_kind','') or '').strip()
  if condition not in {'remind','paper_received','receipt_delivered','task_done','run_routine','run_agent'} or not 1<=minutes<=1440:raise ValueError()
+ if condition=='run_routine' and not host._module_enabled('transport'):raise PermissionError('module_disabled')
+ if condition in {'paper_received','receipt_delivered'} and not host._module_enabled('receipt'):raise PermissionError('module_disabled')
  if condition=='run_routine':
   # run_routine 到点是「干活」不是「发提醒」；routine_kind 目前只支持 daily_scan（每日扫账）。
   if routine_kind not in {'daily_scan'}:raise ValueError()
