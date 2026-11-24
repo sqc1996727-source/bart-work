@@ -70,6 +70,16 @@ def bind_database(con, profile):
         raise RuntimeError("database belongs to a different enterprise")
 
 def public_profile(profile, role):
+    visible = []
+    definitions = industry_pack(profile["industry"])["modules"]
+    for key in profile["modules"]:
+        definition = definitions[key]
+        if role not in definition["roles"]:
+            continue
+        item = {"id": key, **{k: v for k, v in definition.items() if k not in {"roles", "actions"}}}
+        item["actions"] = [{k:v for k,v in action.items() if k != "requires"}
+                           for action in definition.get("actions", [])
+                           if not action.get("requires") or action["requires"] in profile["modules"]]
+        visible.append(item)
     return {"organization": {"name": profile["name"], "industry": profile["industry"]},
-            "modules": [{"id": key, **{k: v for k, v in industry_pack(profile['industry'])['modules'][key].items() if k != "roles"}}
-                        for key in profile["modules"] if role in industry_pack(profile["industry"])["modules"][key]["roles"]]}
+            "modules": visible}
