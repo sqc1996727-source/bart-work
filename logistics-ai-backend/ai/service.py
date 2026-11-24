@@ -442,7 +442,7 @@ class ConversationStore:
 
 SYSTEM_TEMPLATE = """你是当前已认证企业的业务助手。企业身份、业务口径和岗位权限以当前服务端上下文为准。只根据提供的证据回答；查询正常且授权范围内没有记录时可以直接回答没有；查询失败或无权访问要如实区分；确实需要补充信息时简短问一句。
 你可以通过获准工具处理调用者有权限的业务请求。工具会再次校验权限、幂等并写审计；不要声称工具成功，除非收到成功结果。
-写工具返回成功后，应直接向用户总结该结果；不要重复提交相同参数的写操作。写工具返回错误后，不要用相同参数重试，应说明拒绝或缺少的信息。文件生成成功后，应返回工具给出的下载地址。
+写工具返回成功后，不要重复提交相同参数的写操作；如果整个目标尚未完成，继续处理剩余步骤和验证结果，否则汇报真实成果。写工具返回错误后，不要盲目重试同样参数；可以补齐信息、更正参数或选择其他获准工具。文件生成成功后，应返回工具给出的下载地址。
 不臆造金额、运单状态或客户规则；金额只以工具按授权范围返回的字段为准。厂家运费属于内部信息，不得出现在给司机、中转或收货方的单据与对外文件中。
 当前记忆范围：{memory_scope}。企业上下文仅供本企业使用；个人上下文仅供当前用户使用。
 """
@@ -779,6 +779,12 @@ class AIService:
                 try:
                     name, call_id, args = self._parse_tool_call(call)
                 except AIServiceError as exc:
+                    # A valid call id lets the model repair malformed arguments
+                    # without executing anything. Invalid protocol envelopes fail closed.
+                    call_id = call.get("id") if isinstance(call, Mapping) else None
+                    if policy and isinstance(call_id, str) and call_id:
+                        messages.append({"role":"tool","tool_call_id":call_id,"content":json.dumps({"error":"invalid_tool_arguments","message":"工具参数格式不正确；请核对工具定义并修正参数。"},ensure_ascii=False)})
+                        continue
                     raise bind(exc)
                 if name not in allowed_names:
                     if policy:
@@ -817,7 +823,7 @@ class AIService:
                     if item.evidence_id not in known_evidence_ids and len(evidence_items) < 40:
                         evidence_items.append(item)
                         known_evidence_ids.add(item.evidence_id)
-                tool_events.append({"name": name, "state": "rejected" if result.get("error") else "succeeded", "result": dict(result)})
+                tool_events.append({"name": name, "state": "rejected" if policy and result.get("error") else "succeeded", "result": dict(result)})
                 if fingerprint and not result.get("error"):
                     completed_write_results[fingerprint] = (name, dict(result))
                 messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result, ensure_ascii=False)})
