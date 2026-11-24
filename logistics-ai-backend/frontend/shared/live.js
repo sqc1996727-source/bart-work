@@ -2,7 +2,7 @@
 'use strict';
 const live={boot:null,today:null,jobs:[],followups:[],history:[],notifications:[],conversation:null,messages:[],selected:null,detail:null,error:'',loading:true,attachmentIds:[],uploading:false,posting:false,pending:null,watch:null,poll:null,epoch:0,watchEpoch:0,scope:'enterprise',financeItems:[],financeReview:null,users:[],editingUser:null};
 const activeStates=new Set(['queued','running']);
-const labels={queued:'等待执行',running:'正在处理',succeeded:'已完成',failed:'未完成',cancelled:'已停止',interrupted:'服务中断',pending:'等待跟进',paused:'已暂停',done:'已完成'};
+const labels={queued:'等待执行',running:'正在处理',succeeded:'答复已返回',failed:'未完成',cancelled:'已停止',interrupted:'服务中断',pending:'等待跟进',paused:'已暂停',done:'已完成'};
 const roleNames={owner_finance:'企业负责人',dispatcher:'管理人员',employee:'业务员工'};
 const arg=s=>esc(JSON.stringify(String(s)));
 const arr=x=>Array.isArray(x)?x:[];
