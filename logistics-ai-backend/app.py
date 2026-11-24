@@ -249,6 +249,7 @@ def init_db() -> None:
         con.execute("INSERT OR IGNORE INTO work_state(id,rev,updated_at,updated_by,payload) VALUES(1,0,'','','{}')")
     integrity.initialize(sys.modules[__name__])
     agent_runtime.initialize(sys.modules[__name__])
+    industry_extension.initialize(PRODUCT, sys.modules[__name__])
     if TENANT_ID == product_profile.LEGACY_ID:
         _import_legacy_state_if_empty()
     from ingestion.handler import configure as configure_ingestion
@@ -2153,7 +2154,32 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _industry_route_denied(path):
         return module_scope.route_denied(PRODUCT, path)
 
+    def _dispatch_industry_route(self):
+        parts = urlsplit(self.path)
+        if not parts.path.startswith("/api/industry/"):
+            return False
+        user = self._require_user()
+        if not user:
+            return True
+        try:
+            body = self._json_body() if self.command in {"POST","PUT","PATCH"} else {}
+        except (ValueError, TypeError):
+            self._send(400, {"error":"invalid_request"})
+            return True
+        try:
+            status, result = industry_extension.route(
+                PRODUCT, sys.modules[__name__], dict(user), self.command,
+                parts.path, parse_qs(parts.query), body,
+                self.headers.get("Idempotency-Key",""))
+            self._send(status, result)
+        except PermissionError:
+            self._send(403, {"error":"forbidden"})
+        except ValueError:
+            self._send(400, {"error":"invalid_request"})
+        return True
+
     def do_GET(self):
+        if self._dispatch_industry_route(): return
         path = urlsplit(self.path).path
         if self._industry_route_denied(path): self._send(404,{"error":"not_found"}); return
         if path == "/api/finance/candidates" or path.startswith('/api/finance/candidates/'):
@@ -2577,6 +2603,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, {"error": "not_found"})
 
     def do_POST(self):
+        if self._dispatch_industry_route(): return
         path = urlsplit(self.path).path
         if self._industry_route_denied(path): self._send(404,{"error":"not_found"}); return
         if path == "/api/login":
@@ -2726,6 +2753,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, {"error": "not_found"})
 
     def do_PUT(self):
+        if self._dispatch_industry_route(): return
         if self._industry_route_denied(urlsplit(self.path).path): self._send(404,{"error":"not_found"}); return
         user = self._require_user()
         if not user: return
@@ -2734,6 +2762,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, {"error": "not_found"})
 
     def do_PATCH(self):
+        if self._dispatch_industry_route(): return
         user = self._require_user()
         if not user: return
         path = urlsplit(self.path).path
@@ -2744,6 +2773,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, {"error": "not_found"})
 
     def do_DELETE(self):
+        if self._dispatch_industry_route(): return
         user=self._require_user()
         if not user: return
         path=urlsplit(self.path).path
