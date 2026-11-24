@@ -40,6 +40,12 @@ async function refresh(v){const epoch=live.epoch;let result;
 }
 async function go(v){if(!live.boot)return;closeSheet();if(v==='new'){if(live.pending||live.uploading||live.posting){live.error='请先完成当前提交或上传';render();return}stopWatch();live.conversation=null;live.messages=[];live.selected=null;live.attachmentIds=[];$('prompt').value=''}view=v;live.error='';render();try{await refresh(v);if(view===v)render()}catch(e){fail(e)}}
 function home(){
+ const work=live.today?.work_summary;
+ if(work)return title('今日工作',work.total?'当前有 '+work.total+' 项待办工作。':'当前已登记任务没有待办。','企业工作')+
+ '<p class="note livecopy">'+esc(live.today.note||'')+'</p><div class="tasklist">'+arr(work.items).map(t=>row(t.title,stamp(t.due_at)||'待处理','launch('+arg('查看并协助处理工作任务 '+t.id)+')','clock')).join('')+'</div>'+
+ (work.total>arr(work.items).length?'<p class="note">还有其他任务，可交给 AI 查询。</p>':'')+
+ '<div class="sheetactions"><button class="secondary" onclick="launch(\'结合当前已登记工作任务和企业规则，帮我安排今天的工作\')">交给 AI 整理工作</button></div>'+
+ (live.notifications.length?'<div class="label">消息</div>'+live.notifications.map((n,i)=>row(n.text,stamp(n.created_at),'openNotice('+i+')','clock')).join(''):'');
  const routine=live.today?.routine;
  if(!routine)return title('今日工作','正在读取企业业务状态…')+empty('等待服务返回');
  const candidates=arr(routine.routine_candidates);
