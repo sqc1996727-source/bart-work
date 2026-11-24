@@ -356,7 +356,11 @@ def execute(host,user,name,args,key):
    if mutating:con.execute('INSERT OR IGNORE INTO agent_capability_calls(owner_id,key,request_hash,result,role_rank) VALUES(?,?,?,?,?)',(user['id'],key,digest,json.dumps(result,ensure_ascii=False),RANK[user['role']]))
   return result
  except (LookupError,PermissionError):return {'error':'not_found'}
- except (ValueError,TypeError,KeyError,TimeoutError,subprocess.TimeoutExpired):return {'error':'invalid_request_or_file_unavailable'}
+ except ValueError as exc:
+  # 具体契约错误让模型能自检修正，不再统一吞成笼统的 unavailable。
+  code=str(exc) or 'invalid_request'
+  return {'error':code[:80]}
+ except (TypeError,KeyError,TimeoutError,subprocess.TimeoutExpired):return {'error':'invalid_request_or_file_unavailable'}
 
 def find_records(host,user,args):
  """Search scoped business records, authorized file names, and safe own history.

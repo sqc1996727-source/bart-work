@@ -432,8 +432,21 @@ class ConversationStore:
 
     def finish_tool(self, event_id: str, result: Mapping[str, Any]) -> None:
         result_json = json.dumps(result, ensure_ascii=False)
+        # 业务工具把异常吞成 {"error": code} 返回；这属于失败而非成功。
+        # 审计必须与模型看到的结果一致，否则"跑过≠成了"被日志掩盖。
+        error = result.get("error") if isinstance(result, Mapping) else None
+        # not_found 是授权/范围拒绝的正常业务答复（模型可据此解释），不是工具故障。
+        if error in ("not_found", "not_found_or_not_authorized"):
+            error = None
+        now = time.time()
         with self._connect() as db:
-            db.execute("UPDATE tool_events SET state='succeeded',result_json=?,error_code=NULL,updated_at=? WHERE id=?", (result_json, time.time(), event_id))
+            if error:
+                code = error if isinstance(error, str) else str(error)
+                db.execute("UPDATE tool_events SET state='failed',result_json=?,error_code=?,updated_at=? WHERE id=?",
+                           (result_json, code[:80], now, event_id))
+            else:
+                db.execute("UPDATE tool_events SET state='succeeded',result_json=?,error_code=NULL,updated_at=? WHERE id=?",
+                           (result_json, now, event_id))
 
     def fail_tool(self, event_id: str, code: str) -> None:
         with self._connect() as db:
@@ -823,7 +836,11 @@ class AIService:
                     if item.evidence_id not in known_evidence_ids and len(evidence_items) < 40:
                         evidence_items.append(item)
                         known_evidence_ids.add(item.evidence_id)
-                tool_events.append({"name": name, "state": "rejected" if policy and result.get("error") else "succeeded", "result": dict(result)})
+                # 与持久化审计一致：任何 error 都是 rejected，不只 policy 场景。
+                # not_found 是预期拒绝结果，保留 succeeded（模型可正常解释）。
+                tool_events.append({"name": name,
+                                    "state": "rejected" if result.get("error") and result.get("error") not in ("not_found", "not_found_or_not_authorized") else "succeeded",
+                                    "result": dict(result)})
                 if fingerprint and not result.get("error"):
                     completed_write_results[fingerprint] = (name, dict(result))
                 messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result, ensure_ascii=False)})

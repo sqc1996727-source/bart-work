@@ -2466,7 +2466,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return
                 self._send(200,info);return
             if path=='/api/agent/ui/bootstrap':
-                self._send(200,{**product_profile.public_profile(PRODUCT, user['role']),"user":{"id":user["id"],"display_name":user["name"],"salutation":agent_runtime.preferences(sys.modules[__name__],dict(user)).get("salutation",user["name"]),"role":user["role"]},"suggestions":integrity.suggestions(sys.modules[__name__],dict(user)),"capabilities":{"attachments":True,"voice":(ROOT/"models"/"whisper-tiny"/".ready.json").exists(),"financial_analysis":_finance_scope(dict(user))!="none","skills":True,"durable_jobs":True,"team_operations":True}}); return
+                # 能力声明必须与本企业实际启用的模块一致：企业没配财务模块时，
+                # 即便角色有财务权限也不能对外宣称 financial_analysis 可用。
+                _enabled_modules=set(PRODUCT['modules'])
+                _fin_enabled=('finance' in _enabled_modules and _finance_scope(dict(user))!="none")
+                self._send(200,{**product_profile.public_profile(PRODUCT, user['role']),"user":{"id":user["id"],"display_name":user["name"],"salutation":agent_runtime.preferences(sys.modules[__name__],dict(user)).get("salutation",user["name"]),"role":user["role"]},"suggestions":integrity.suggestions(sys.modules[__name__],dict(user)),"capabilities":{"attachments":True,"voice":(ROOT/"models"/"whisper-tiny"/".ready.json").exists(),"financial_analysis":_fin_enabled,"skills":True,"durable_jobs":True,"team_operations":True}}); return
             if path=='/api/agent/today':
                 # 「Bot 先开口」：确定性扫账，不烧 token，给前端第一屏直接展示「今天该盯的事」。
                 result=agent_routine.run(sys.modules[__name__],dict(user),limit=20)

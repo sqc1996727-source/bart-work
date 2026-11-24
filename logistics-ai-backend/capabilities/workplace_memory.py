@@ -23,17 +23,25 @@ def save(host,user,args,conversation_id):
  applies=str(args.get('applies_to','')).strip()[:300]
  if scope not in ('personal','company') or kind not in ('preference','experience','lead','rule') or not topic or not title or not content:raise ValueError()
  if scope=='company' and user['role'] not in {'owner_finance','dispatcher'}:raise PermissionError()
- if scope=='company' and user['role']=='dispatcher' and args.get('action','save')!='note':raise PermissionError()
  if kind=='rule' and scope!='company':raise ValueError()
  if SECRET.search(topic+' '+title+' '+content):raise ValueError()
  start=str(args.get('valid_from') or date.today().isoformat());end=str(args.get('valid_until') or '')
  date.fromisoformat(start)
  if end and date.fromisoformat(end)<date.fromisoformat(start):raise ValueError()
- action=args.get('action','save')
- if action not in {'save','note','forget'}:raise ValueError()
- # 「主动沉淀」用 note 动作：无需 expected_version、无需 applies_to、company 线索老板以外也能记，
- # 但仍走同一套岗位隔离 + 留痕 + SECRET 过滤。正式规则仍必须走 save + expected_version。
+ action=args.get('action')
+ if action is not None and action not in {'save','note','forget'}:raise ValueError()
+ # 契约层防御：Agent 常把"主动沉淀"调成 save 却漏 expected_version。
+ # 规则：显式 action 优先；缺省时，凡非 rule 类型或缺 expected_version 的，
+ # 一律按 note 处理（note 无需版本、走同一套权限/隔离/SECRET/留痕）。
+ # 只有显式 action=save 且 kind=rule 且带合法 expected_version 才是正式规则。
+ expected=args.get('expected_version')
+ if action is None:
+  action='save' if (kind=='rule' and type(expected) is int and expected>=0) else 'note'
+ if action=='save' and kind!='rule':raise ValueError('formal_save_requires_rule_kind')
+ if action=='save' and type(expected) is not int:raise ValueError('formal_save_requires_expected_version')
+ if scope=='company' and user['role']=='dispatcher' and action!='note':raise PermissionError()
  note=action=='note'
+ if note and kind=='rule':raise ValueError('rule_requires_explicit_save_with_version')
  if note and kind not in ('preference','experience','lead'):raise ValueError()
  if note and scope=='company' and kind=='rule':raise ValueError()
  if note and not applies:applies=args.get('applies_to','')
