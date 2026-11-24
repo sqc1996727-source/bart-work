@@ -1,6 +1,8 @@
-# 企业 AI Bot · 真实业务验收报告（第二轮：修复后）
+# 企业 AI Bot · 真实业务验收报告（最终收尾版）
 
 日期：2026-11-25
+
+> 最终收尾追加：GPT 复查的三处问题已修复复测；真账副本迁移演练、前端全页面三角色联调、备份恢复演练、真实模型计费单价核实均已完成。详细部署准备见 DEPLOY-PREP.md。结论：**具备生产试点条件（需授权切换，物流行业 + 内部试用 + 人工财务确认）**。
 分支：`acceptance/real-business-20261125`（已推送 GitHub，基于 product/shared-bot-core）
 环境：隔离目录，四家独立企业（物流A/B/C + 非物流retail），各自独立 DATA_DIR、独立端口
 模型：真实模型 token01 网关 deepseek-v4-flash（网关报 v4.1-flash）；跨模型测试 glm-5.3-flash；故障注入用黑洞地址
@@ -86,3 +88,37 @@
 - 全量测试 141 项全过；四家企业服务健康；共享前端三端无溢出
 
 原始证据：`/tmp/julong-v5-visual/acceptance/evidence/`（对话响应、xlsx、三端截图、故障注入日志）。
+
+---
+
+## 九、最终收尾（GPT 复查三处 + 部署准备）
+
+### GPT 复查发现的三处问题（全部修复复测）
+1. **企业模块未完整约束服务端**：非物流企业 HTTP 接口层仍可调物流接口。修复：Handler 增加行业守卫，物流专属路由（finance/reconciliation/waybills/cases/routine-scans）在非物流行业返回 404。实测 5 个物流接口全 404，通用接口（today/state/notifications）200
+2. **非物流暴露物流团队工具**：`get_case_workspace`/`handoff_case`/`share_case_file` 来自 team 模块被漏过滤。修复：按行业包一并过滤。实测非物流企业 20 个工具、零物流工具
+3. **正式规则写入与契约注释不一致**：`forget` 走 save 分支需版本匹配、行为错位。修复：forget 独立处理（个人偏好本人可撤回、企业记忆授权岗位、留痕），契约注释改为与实际 note/save/forget 行为一致。实测四种模式：note+rule 拒 / save+rule+版本 成 / save+experience 拒 / forget 成
+
+### 真账数据兼容（只读副本演练，原件未碰）
+- 真账副本 32 表、rev 69、8 票运单、3 回单、3 用户；本分支 `init_db()` 直接打开，自动建 `product_installation` 并绑定 julong-test，表 32→34，数据完整
+- 原账号 JLWL/jnlong818 登录成功，前端 200
+- **发现并处置**：JLWLJL/JLWLWL 原密码与老板相同这一说法实测不成立（登录失败）。试点前必须用老板会话经 `POST /api/users/<user_id>/password` 重设（收 user_id 非 username）；副本演练返回 200 且会话撤销
+
+### 完整前端联调（真账副本，三角色）
+- 老板真登录，五个页面全加载真数据：工作台 16 条回单催办、持续任务 2 条真 job、业务中心 3 模块、详情面板可开、无 JS 错误；桌面 1440 布局正常；手机/平板见第二轮三端截图
+- 三角色：老板/调度 finance=true+财务接口 200；员工 finance=false+财务接口 403+金额脱敏
+- "工作记录"显示暂无——迁移前旧会话不在新 AI 会话表，符合预期
+
+### 备份恢复演练
+- `scripts/ledger_backup.backup()` 生成带 SHA256 的 manifest；`restore()` 校验每文件哈希 + SQLite 完整性 + manifest 与账本引用一致，恢复到新目录
+- 实测：恢复到新目录后 rev 69 / 8 票 / 3 回单 / 3 用户全一致
+
+### 真实模型计费（查网关公开 API，非猜测）
+- 源：token01 `/api/pricing` 实测；deepseek-v4.1-flash 默认组 billing_expr 闲时(22:00–08:00) `p*1+c*4`、忙时 `p*2+c*8`（p/c=每百万 token）；`quota_display_type=CNY`、`quota_per_unit=500000`
+- 本轮全部真实调用：25 次成功、859,346 token（prompt 832,000/completion 27,346），全在闲时
+- **闲时总成本 ≈ ¥0.94；忙时 ≈ ¥1.88；单次平均闲时 ≈ ¥0.04**
+- Key 实际分组未查到（折扣组会更低）；按默认组公式，口径透明不猜
+
+### 最终结论
+**具备生产试点条件**，限定：物流行业、内部授权试用、财务人工确认、授权后才切换环境。
+未经授权不切生产、不覆盖真账。部署清单、启动顺序、恢复方案、禁止项见 `acceptance/DEPLOY-PREP.md`。
+仍需老大决策的商业事项：试点定价与预算、是否继续用现有 Key、第二行业包范围（本轮不开发）。
