@@ -214,8 +214,9 @@ def tick(host):
   if not user:continue
   current={}
   with host.db() as con:
-   for row in con.execute('SELECT * FROM case_teams WHERE tenant_id=? AND responsible_id=?',(user['tenant_id'],user['id'])):
-    current['case:'+row['number']]=(str(row['revision']),f"运单 {row['number']} 已交给你负责，可以直接继续处理。")
+   if getattr(host, '_module_enabled', lambda _: True)('transport'):
+    for row in con.execute('SELECT * FROM case_teams WHERE tenant_id=? AND responsible_id=?',(user['tenant_id'],user['id'])):
+     current['case:'+row['number']]=(str(row['revision']),f"运单 {row['number']} 已交给你负责，可以直接继续处理。")
    for row in con.execute("SELECT t.* FROM tasks t JOIN users u ON u.id=t.created_by WHERE u.tenant_id=? AND t.assignee_id=? AND t.status IN ('open','in_progress') AND t.due_at IS NOT NULL",(user['tenant_id'],user['id'])):
     try:
      due=datetime.fromisoformat(row['due_at']);due=due if due.tzinfo else due.astimezone()
