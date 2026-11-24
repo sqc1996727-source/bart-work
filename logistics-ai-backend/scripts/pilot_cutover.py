@@ -13,7 +13,10 @@ from pathlib import Path
 import sqlite3
 import tempfile
 
-from ledger_backup import backup, restore, LEDGER, CHAT, checksum, referenced_files, file_path
+if __package__:
+    from .ledger_backup import backup, restore, LEDGER, CHAT, checksum, referenced_files, file_path
+else:
+    from ledger_backup import backup, restore, LEDGER, CHAT, checksum, referenced_files, file_path
 
 
 def rows_by_table(path):
