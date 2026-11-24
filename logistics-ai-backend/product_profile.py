@@ -13,21 +13,12 @@ ROLES = ("employee", "dispatcher", "owner_finance")
 # 行业能力包注册表。通用内核提供：会话、长期记忆、偏好、任务、文件、
 # 表格分析、定时/跟进、团队与权限。行业包只叠加本行业的业务模块和工具。
 # 未注册的行业不虚构业务能力，仅以通用内核运行（modules 为空）。
-INDUSTRY_PACKS = {
-    "logistics": {
-        "modules": {
-            "transport": {"label": "运单", "description": "运输记录与进度", "icon": "truck", "roles": ROLES, "prompt": "查看当前运输业务"},
-            "receipt": {"label": "回单", "description": "签收凭证与回单跟进", "icon": "file", "roles": ROLES, "prompt": "查看待收回单"},
-            "finance": {"label": "财务", "description": "费用核查与内部对账", "icon": "money", "roles": ("dispatcher", "owner_finance"), "prompt": "查看当前费用异常"},
-        },
-        "business_tools": True,   # 有物流业务工具包
-    },
-}
+from industry_packs import PACKS as INDUSTRY_PACKS, get_pack
 MODULES = INDUSTRY_PACKS["logistics"]["modules"]  # 兼容旧引用
 
 def industry_pack(industry):
     """返回行业包；未注册行业返回空包（通用内核能力仍完整）。"""
-    return INDUSTRY_PACKS.get(industry, {"modules": {}, "business_tools": False})
+    return get_pack(industry)
 
 def load(root, environ=None):
     env = os.environ if environ is None else environ
@@ -35,6 +26,8 @@ def load(root, environ=None):
     raw = json.loads(Path(file).read_text(encoding="utf-8")) if file else {}
     if not isinstance(raw, dict) or set(raw) - {"tenant_id", "name", "industry", "modules"}:
         raise ValueError("invalid product profile")
+    if file and not {"tenant_id", "name", "industry", "modules"} <= set(raw):
+        raise ValueError("profile requires tenant_id, name, industry, modules")
     tenant = raw.get("tenant_id", LEGACY_ID)
     name = raw.get("name", "巨龙物流")
     industry = raw.get("industry", "logistics")
