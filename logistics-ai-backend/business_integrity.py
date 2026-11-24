@@ -42,7 +42,7 @@ def ticket_history(host,user,number,limit=20):
         rows=con.execute('SELECT * FROM state_history ORDER BY rev DESC LIMIT 1000').fetchall()
     changes=[]; previous=None
     for row in reversed(rows):
-        state=host._decode_state(row['payload'])
+        state=host._business_state(row['payload'])
         doc=next((d for d in json.loads(state[host.STATE_KEYS[0]]) if str(d.get('number'))==number),None)
         if user['role']=='employee' and doc and not host._case_allowed(current_doc,user):doc=None
         # Project every revision using today's authorization, including finance.
@@ -81,6 +81,8 @@ def restore_revision(host,user,body,key):
         old=con.execute('SELECT payload FROM state_history WHERE rev=?',(target,)).fetchone()
         if not old:return 404,{'error':'revision_not_found'}
         current_state=host._decode_state(current['payload']); target_state=host._decode_state(old['payload'])
+        if any(json.loads(current_state[key]) != json.loads(target_state[key]) for key in host._module_state_keys()):
+            return 403,{'error':'module_disabled'}
         if any(json.loads(current_state[host.STATE_KEYS[i]]) != json.loads(target_state[host.STATE_KEYS[i]]) for i in (4,7)):
             return 409,{'error':'finance_restore_requires_manual_reconciliation'}
         def freight(state):
@@ -111,7 +113,7 @@ def _money(value):
 def review(host,user,number='',limit=30,offset=0):
     with host.db() as con:
         row=con.execute('SELECT * FROM work_state WHERE id=1').fetchone()
-        raw=host._decode_state(row['payload'])
+        raw=host._business_state(row['payload'])
         tables={x['name'] for x in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         attached=con.execute('SELECT waybill_number,sha256 FROM attachments WHERE tenant_id=?',(user['tenant_id'],)).fetchall() if 'attachments' in tables else []
     docs=json.loads(raw[host.STATE_KEYS[0]])
@@ -134,7 +136,7 @@ def review(host,user,number='',limit=30,offset=0):
         (confirmed if resolved else findings).append(item)
     for d in docs:
         n=str(d.get('number'));r=receipts.get(n,{})
-        if not (r.get('paper') is True or (isinstance(r.get('paper'),dict) and not r['paper'].get('off'))):add('missing_paper',n,'纸质回单尚未登记收到')
+        if host._module_enabled('receipt') and not (r.get('paper') is True or (isinstance(r.get('paper'),dict) and not r['paper'].get('off'))):add('missing_paper',n,'纸质回单尚未登记收到')
         if not any(str(a['waybill_number'])==n for a in attached):add('missing_attachment',n,'这票的运单附件列表里还没有上传图片；其他地方是否有资料未在此核实')
     groups={};proofs={}
     for f in fees:
