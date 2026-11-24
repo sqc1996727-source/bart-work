@@ -48,60 +48,24 @@ PASSWORD_ITERATIONS = 310_000
 MAX_BODY = 2 * 1024 * 1024
 MAX_MULTIPART_BODY = 11 * 1024 * 1024
 
-# ---- 模块级服务端约束 --------------------------------------------------------
-# INDUSTRY_PACKS 的 modules 是企业开关。关掉一个模块，必须同时关掉它的业务工具
-# 和 HTTP 接口，否则「界面没有、服务端还能调」就是假隔离。同一行业内关模块同理。
-# 一个工具只归属一个模块，不重复登记，避免同名不同物导致口径分叉。
-LOGISTICS_MODULE_TOOLS = {
-    "transport": frozenset({
-        "search_waybills", "get_waybill", "get_waybill_business_status",
-        "list_waybills", "get_waybill_history", "get_recent_changes",
-        "get_operational_summary", "run_daily_routine", "get_daily_routine_scan",
-        "generate_waybill_report", "preview_waybill_import", "commit_waybill_import",
-        "get_case_workspace", "handoff_case", "share_case_file",
-    }),
-    "receipt": frozenset({"update_receipt_status"}),
-    "finance": frozenset({"update_fee_status", "review_business_records"}),
-}
-LOGISTICS_MODULE_ROUTES = {
-    "transport": ("/api/waybills/", "/api/agent/cases/", "/api/agent/routine-scans/"),
-    "receipt": (),
-    "finance": ("/api/finance/", "/api/reconciliation/"),
-}
-# 关掉财务模块时，状态接口也不能再吐出费用、票据、差异、月度汇总域。
-LOGISTICS_MODULE_STATE_KEYS = {
-    "finance": ("julong_demo_month_v1", "julong_demo_fees_v1", "julong_demo_bills_v1",
-                "julong_demo_diffs_v1", "julong_demo_ai_v1"),
-    "receipt": ("julong_demo_receipts_v1",),
-}
-
+# Compatibility exports for existing tests and adapters.
+import module_scope
+from module_scope import LOGISTICS_MODULE_TOOLS, LOGISTICS_MODULE_ROUTES, LOGISTICS_MODULE_STATE_KEYS
 
 def _enabled_modules():
-    """本企业实际启用的模块；行业包不匹配时视为全部关闭。"""
-    if not product_profile.industry_pack(PRODUCT["industry"])["business_tools"]:
-        return frozenset()
-    return frozenset(PRODUCT["modules"])
-
+    return module_scope.enabled(PRODUCT)
 
 def _module_enabled(module):
     return module in _enabled_modules()
 
-
 def _blocked_tool_names():
-    """本企业不可用的业务工具：行业不匹配则全部，否则只关被禁用模块的。"""
-    enabled = _enabled_modules()
-    blocked = set()
-    for module, names in LOGISTICS_MODULE_TOOLS.items():
-        if module not in enabled:
-            blocked.update(names)
-    return frozenset(blocked)
-
+    return module_scope.blocked_tools(PRODUCT)
 
 def _module_state_keys():
-    """模块关闭时，状态接口需要清空的业务域。"""
-    enabled = _enabled_modules()
-    return {key for module, keys in LOGISTICS_MODULE_STATE_KEYS.items()
-            if module not in enabled for key in keys}
+    return module_scope.suppressed_keys(PRODUCT)
+
+def _business_state(payload):
+    return module_scope.project(PRODUCT, _decode_state(payload))
 
 
 STATE_KEYS = (
@@ -1324,7 +1288,7 @@ class WorkbenchTools:
         if name in {"search_waybills","get_waybill"}:
             with db() as con:
                 row=con.execute("SELECT payload FROM work_state WHERE id=1").fetchone()
-                state=_decode_state(row["payload"] if row else "{}")
+                state=_business_state(row["payload"] if row else "{}")
             try: rows=json.loads(state[STATE_KEYS[0]])
             except Exception: rows=[]
             if user["role"]=="employee": rows=[x for x in rows if isinstance(x,dict) and _case_allowed(x,user)]
@@ -1349,7 +1313,7 @@ class WorkbenchTools:
                 state_row=con.execute("SELECT rev,payload FROM work_state WHERE id=1").fetchone()
                 if not state_row:
                     con.rollback(); raise LookupError("not_found")
-                state=_decode_state(state_row["payload"])
+                state=_business_state(state_row["payload"])
                 try: docs=json.loads(state[STATE_KEYS[0]])
                 except Exception: docs=[]
                 ticket=next((x for x in docs if isinstance(x,dict) and str(x.get("number",""))==number),None)
@@ -1483,7 +1447,7 @@ class V3Context:
             if not user: return []
             workplace_rows=_workplace_memory_rows(con,tenant_id,principal_id,user["role"],memory_scope)
         if not user or not state_row: return []
-        state=_decode_state(state_row["payload"])
+        state=_business_state(state_row["payload"])
         try: waybills=json.loads(state[STATE_KEYS[0]])
         except Exception: waybills=[]
         try: fees=json.loads(state[STATE_KEYS[4]])
@@ -1542,7 +1506,7 @@ def _v3_operational_summary(user,*,record_audit=True):
     with db() as con:
         state_row=con.execute("SELECT rev,payload FROM work_state WHERE id=1").fetchone()
         if not state_row: return {"error":"state_unavailable"}
-        state=_decode_state(state_row["payload"])
+        state=_business_state(state_row["payload"])
         try: waybills=json.loads(state[STATE_KEYS[0]])
         except Exception: waybills=[]
         try: fees=json.loads(state[STATE_KEYS[4]])
@@ -1591,7 +1555,7 @@ def _v3_recent_changes(user,arguments,*,record_audit=True):
     receipt_names={"photo":"签收照片","paper":"纸质回单","delivered":"厂家原件交付","supplement":"逾期补交"}
     with db() as con:
         state_row=con.execute("SELECT payload,rev FROM work_state WHERE id=1").fetchone()
-        state=_decode_state(state_row["payload"] if state_row else "{}")
+        state=_business_state(state_row["payload"] if state_row else "{}")
         try: tickets=json.loads(state[STATE_KEYS[0]])
         except Exception: tickets=[]
         ticket_owner={str(row.get("number")):user["id"] for row in tickets if isinstance(row,dict) and _case_allowed(row,user)}
@@ -1613,6 +1577,7 @@ def _v3_recent_changes(user,arguments,*,record_audit=True):
         except (TypeError,json.JSONDecodeError): details={}
         number=None; summary=None; category=None
         if action=="ai.tool.receipt_status.update" and entity=="waybill":
+            if not _module_enabled("receipt"): continue
             number=ident
             if user["role"]=="employee" and ticket_owner.get(number)!=user["id"]: continue
             field=receipt_names.get(str(details.get("field")),"回单")
@@ -1637,7 +1602,8 @@ def _v3_recent_changes(user,arguments,*,record_audit=True):
         elif action=="state.update" and entity=="state":
             if user["role"]=="employee" and row["user_id"]!=user["id"]: continue
             keys=details.get("keys",[])
-            labels=[domain_names[key] for key in keys if key in domain_names] if isinstance(keys,list) else []
+            labels=[domain_names[key] for key in keys if key in domain_names and key not in _module_state_keys()] if isinstance(keys,list) else []
+            if not labels: continue
             category="工作台更新"; summary="业务账本更新"+("："+"、".join(labels) if labels else "。")
         elif action in {"attachment.upload","attachment.delete"} and entity=="attachment":
             number=details.get("waybill_number") or attachments.get(ident)
@@ -1668,14 +1634,14 @@ def _v3_raw_rows(domain=0):
     """从主账本读原始记录；老 AI 的脱敏副本不参与，财务字段只在服务端这一层补。"""
     with db() as con:
         row=con.execute("SELECT payload FROM work_state WHERE id=1").fetchone()
-    state=_decode_state(row["payload"] if row else "{}")
+    state=_business_state(row["payload"] if row else "{}")
     try: return [x for x in json.loads(state[STATE_KEYS[domain]]) if isinstance(x,dict)]
     except (TypeError,ValueError,KeyError,IndexError): return []
 
 
 def _v3_add_finance(target, raw, user, *, note=True):
     """按账号授权范围补财务字段。财务口径尚未确认，只返回已登记数值，不计算毛利。"""
-    if _finance_scope(user)=="none" or not isinstance(raw,dict) or not isinstance(target,dict): return target
+    if not _module_enabled("finance") or _finance_scope(user)=="none" or not isinstance(raw,dict) or not isinstance(target,dict): return target
     for key in _FINANCE_FIELDS:
         value=raw.get(key)
         if value not in (None,"",0,"0"): target[key]=value
@@ -1883,7 +1849,7 @@ def _v3_safe_case(user, number):
     with db() as con:
         row=con.execute("SELECT payload,rev FROM work_state WHERE id=1").fetchone()
         if not row: return None
-        state=_decode_state(row["payload"])
+        state=_business_state(row["payload"])
         try: docs=json.loads(state[STATE_KEYS[0]])
         except Exception: docs=[]
         ticket=next((x for x in docs if isinstance(x,dict) and str(x.get("number",""))==number),None)
@@ -2215,10 +2181,11 @@ def inspect_business(user, *, snapshot=None, tasks_snapshot=None):
                 tasks=con.execute("SELECT * FROM tasks WHERE assignee_id=?",(user["id"],)).fetchall()
             else:
                 tasks=con.execute("SELECT * FROM tasks").fetchall()
-        raw=_decode_state(state_row["payload"] if state_row else "{}")
+        raw=_business_state(state_row["payload"] if state_row else "{}")
     else:
         tasks=tasks_snapshot
-        raw=_decode_state(snapshot) if not isinstance(snapshot,dict) else {key:snapshot.get(key,"[]") for key in STATE_KEYS}
+        raw=_business_state(snapshot) if not isinstance(snapshot,dict) else {key:snapshot.get(key,"[]") for key in STATE_KEYS}
+    raw=module_scope.project(PRODUCT,raw)
     values={}
     for i,key in enumerate(STATE_KEYS):
         try: values[key]=json.loads(raw[key])
@@ -2303,7 +2270,7 @@ def monthly_analytics(user,month):
     except ValueError as exc: raise ValueError("invalid month") from exc
     with db() as con:
         state_row=con.execute("SELECT rev,payload FROM work_state WHERE id=1").fetchone()
-    state=_decode_state(state_row["payload"])
+    state=_business_state(state_row["payload"])
     def rows(key):
         try: value=json.loads(state[key]); return value if isinstance(value,list) else []
         except Exception: return []
@@ -2430,14 +2397,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     @staticmethod
     def _industry_route_denied(path):
-        """行业包或模块未启用的业务接口一律不可达（不泄露接口存在）。"""
-        enabled = _enabled_modules()
-        for module, prefixes in LOGISTICS_MODULE_ROUTES.items():
-            if module in enabled or not prefixes:
-                continue
-            if path.startswith(prefixes):
-                return True
-        return False
+        return module_scope.route_denied(PRODUCT, path)
 
     def do_GET(self):
         path = urlsplit(self.path).path
@@ -3007,6 +2967,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         user=self._require_user()
         if not user: return
         path=urlsplit(self.path).path
+        if self._industry_route_denied(path): self._send(404,{"error":"not_found"}); return
         if path.startswith("/api/memories/"):
             self._deactivate_memory(user,path.rsplit("/",1)[-1]); return
         if path.startswith("/api/attachments/"):
@@ -3154,6 +3115,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if base_rev != current["rev"]:
                 con.rollback()
                 self._send(409, {"error": "revision_conflict", "rev": current["rev"], "updated": current["updated_at"], "state": visible_old}); return
+            if any(parsed.get(key) not in (None, []) for key in _module_state_keys()):
+                con.rollback(); self._deny(403, "module_disabled"); return
             try:
                 _reject_new_demo_rows(old_state, parsed)
             except ValueError as exc:
@@ -3216,8 +3179,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 merged = {key: json.dumps(parsed[key], ensure_ascii=False, separators=(",", ":")) for key in STATE_KEYS}
             try:
+                merged = module_scope.preserve_disabled(PRODUCT, old_state, parsed, merged)
                 waybills = json.loads(merged[STATE_KEYS[0]])
-                _merge_ordinary_waybill_writes(json.loads(old_state[STATE_KEYS[0]]), waybills)
+                if _module_enabled("transport"):
+                    _merge_ordinary_waybill_writes(json.loads(old_state[STATE_KEYS[0]]), waybills)
                 merged[STATE_KEYS[0]] = json.dumps(waybills, ensure_ascii=False, separators=(",", ":"))
                 integrity.validate_state(sys.modules[__name__],dict(user),old_state,merged)
             except ValueError as exc:
