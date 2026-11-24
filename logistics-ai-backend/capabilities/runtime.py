@@ -136,9 +136,9 @@ def run_one(host):
   else:status,result=host._v3_chat(user,json.loads(row['payload']))
   state='succeeded' if status==200 else 'cancelled' if result.get('error')=='request_cancelled' else 'failed'
   with host.db() as con:
-   con.execute('UPDATE agent_jobs SET state=?,progress=?,result=?,updated_at=? WHERE id=?',(state,'已完成' if state=='succeeded' else '已停止' if state=='cancelled' else '这次未完成',json.dumps({'status':status,**result},ensure_ascii=False),host.now_iso(),row['id']))
+   con.execute('UPDATE agent_jobs SET state=?,progress=?,result=?,updated_at=? WHERE id=?',(state,'答复已返回' if state=='succeeded' else '已停止' if state=='cancelled' else '这次未完成',json.dumps({'status':status,**result},ensure_ascii=False),host.now_iso(),row['id']))
    if state in {'succeeded','failed'}:
-    notice='交办的事情已处理完，点开接着看。' if state=='succeeded' else '工作未完成，已保留实际执行记录，请查看后续事项。'
+    notice='Agent 已返回本次工作结果，点开查看实际完成情况。' if state=='succeeded' else '工作未完成，已保留实际执行记录，请查看后续事项。'
     con.execute('INSERT OR IGNORE INTO agent_notifications VALUES(?,?,?,?,?,?,?,?,0)',(secrets.token_urlsafe(16),row['tenant_id'],row['owner_id'],row['role_rank'],'job:'+row['id'],json.loads(row['payload'])['conversation_id'],notice,host.now_iso()))
  except Exception:
   import logging
