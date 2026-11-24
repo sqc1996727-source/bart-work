@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.example.enterprise-bot</string>
+  <key>ProgramArguments</key>
+  <array><string>/bin/sh</string><string>/ABSOLUTE/RELEASE/scripts/run_pilot.sh</string></array>
+  <key>WorkingDirectory</key><string>/ABSOLUTE/RELEASE</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DATA_DIR</key><string>/ABSOLUTE/ISOLATED/DATA</string>
+    <key>PYTHON_BIN</key><string>/ABSOLUTE/VENV/bin/python</string>
+    <key>HOST</key><string>127.0.0.1</string>
+    <key>PORT</key><string>3000</string>
+    <key>COOKIE_SECURE</key><string>1</string>
+    <key>JL_AI_BASE_URL</key><string>https://MODEL-ENDPOINT.example/v1</string>
+    <key>JL_AI_MODEL</key><string>AUTHORIZED_MODEL</string>
+    <key>BOT_MODEL_KEYCHAIN_SERVICE</key><string>AUTHORIZED_KEYCHAIN_ENTRY</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>15</integer>
+  <key>StandardOutPath</key><string>/ABSOLUTE/PRIVATE_LOGS/service.log</string>
+  <key>StandardErrorPath</key><string>/ABSOLUTE/PRIVATE_LOGS/service-error.log</string>
+</dict>
+</plist>
