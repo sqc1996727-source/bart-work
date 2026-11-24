@@ -1,0 +1,2500 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#eef0f2" id="jl-theme-color" />
+<title>巨龙物流｜前端业务工作台 · 离线原型</title>
+<style>
+
+/* 巨龙物流 · 前端业务工作台
+   主界面＝录入 + 运单列表；其余产物全是运单的派生视图，点开才出现。
+   运单是唯一主记录：产物不存副本、不单独编辑、不单独删除，改内容只走编辑运单。 */
+
+:root{
+  --bg:#eef0f2; --paper:#ffffff;
+  --ink:#1b2530; --ink-2:#4a5866; --ink-3:#7a8794; --ink-4:#a3adb7;
+  --line:#dde2e7; --line-soft:#eaedf0; --line-strong:#c9d1d9;
+  --accent:#1f5c9e; --accent-deep:#174a80;
+  --focus:rgba(31,92,158,.16); --danger:#b03a2e;
+  --r:3px;
+  --font:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",-apple-system,BlinkMacSystemFont,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.5 var(--font);-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+button,input,textarea,select{font:inherit}
+button{cursor:pointer;transition:background-color .12s,color .12s}
+button:disabled{cursor:not-allowed;opacity:.5}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+input,select,textarea{font-variant-numeric:tabular-nums}
+h1,h2,h3,p{margin:0}
+::selection{background:#e3edf7}
+[hidden]{display:none!important}
+.legacy-only{display:none!important}
+
+.shell{max-width:1500px;margin:auto;padding:0 24px 20px}
+.topbar{height:52px;display:flex;align-items:center;gap:18px;background:var(--paper);margin:0 -24px;padding:0 24px;border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;flex:none}
+.brand-sign{width:26px;height:26px;border-radius:var(--r);background:var(--ink);color:#fff;display:grid;place-items:center;font:600 11px/1 var(--mono)}
+.brand-name{font-size:13px;font-weight:650;line-height:1.2}
+.brand-meta{font-size:11px;color:var(--ink-3);line-height:1.2;margin-top:1px}
+.top-spacer{flex:1}
+.top-note{font-size:11px;color:var(--ink-3);white-space:nowrap;flex:none}
+.top-note+.top-note{border-left:1px solid var(--line);padding-left:12px}
+.top-status{display:flex;align-items:center;gap:12px;flex:none}
+
+.global-search{position:relative;width:min(340px,32vw);flex:none}
+.global-search label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.global-search input{width:100%;height:30px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:0 6px 0 24px;font-size:12px;color:var(--ink);outline:0}
+.global-search input:focus{border-bottom-color:var(--accent);box-shadow:0 1px 0 var(--accent)}
+.global-search input::placeholder{color:var(--ink-4)}
+.global-search::before{content:"";position:absolute;left:6px;top:9px;width:8px;height:8px;border:1.5px solid var(--ink-3);border-radius:50%;pointer-events:none}
+.global-search::after{content:"";position:absolute;left:13px;top:16px;width:5px;height:1.5px;background:var(--ink-3);transform:rotate(45deg);pointer-events:none}
+.search-result{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:160;background:var(--paper);border:1px solid var(--line-strong);border-radius:var(--r);max-height:340px;overflow:auto;padding:4px}
+.search-head{padding:6px 8px;font-size:11px;color:var(--ink-3);border-bottom:1px solid var(--line-soft)}
+.search-row{display:grid;grid-template-columns:96px minmax(0,1fr) 84px;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:7px 8px;border-radius:var(--r);color:var(--ink);font-size:12px}
+.search-row:hover{background:var(--line-soft)}
+.search-row b{font:600 12px/1.3 var(--mono)}
+.search-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.search-row small{font:400 11px/1.3 var(--mono);color:var(--ink-3);text-align:right}
+.search-empty{padding:12px 10px;color:var(--ink-3);font-size:12px;line-height:1.6}
+
+.page-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px 18px;padding:20px 0 18px}
+.page-title{display:flex;align-items:baseline;gap:12px;min-width:0}
+.page-title h1{font-size:20px;font-weight:650;letter-spacing:-.3px}
+.page-title p{font-size:12px;color:var(--ink-3)}
+.progress{display:flex;align-items:baseline;gap:6px;font-size:12px;color:var(--ink-3);white-space:nowrap}
+.progress b{font:650 14px/1 var(--mono);color:var(--ink)}
+.progress .dot-sep{color:var(--ink-4)}
+.actions{display:flex;gap:2px;flex-wrap:wrap;margin-left:auto}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:28px;padding:0 10px;border:1px solid transparent;border-radius:var(--r);background:transparent;color:var(--ink-2);font-size:12px;font-weight:500;white-space:nowrap}
+.btn:hover{background:var(--line-soft);color:var(--ink)}
+.btn-primary,.primary{background:var(--accent);border:0;color:#fff;font-weight:600;height:32px;padding:0 15px;border-radius:var(--r)}
+.btn-primary:hover,.primary:hover{background:var(--accent-deep);color:#fff}
+.btn-sm{height:27px;padding:0 9px;font-size:11px}
+.btn-quiet{color:var(--ink-3)}
+.secondary{border:0;border-radius:var(--r);background:transparent;color:var(--ink-2);height:28px;padding:0 10px;font-size:12px;font-weight:500;white-space:nowrap}
+.secondary:hover{background:var(--line-soft);color:var(--ink)}
+.smallprimary{height:28px;font-size:11px;padding:0 10px}
+
+.entry,.list-panel{background:var(--paper);border:1px solid var(--line)}
+.entry{border-bottom:0;padding:20px 24px 22px}
+.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px}
+.section-head h2{font-size:14px;font-weight:650}
+.hint{font-size:11px;color:var(--ink-3);line-height:1.5}
+.err{display:block;height:30px;padding:6px 10px;border-left:2px solid transparent;background:transparent;color:transparent;border-radius:0;margin-bottom:4px;font-size:12px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.err.show{background:transparent;border-left-color:var(--danger);color:var(--danger)}
+.form-section+.form-section{margin-top:16px;padding-top:16px;border-top:1px solid var(--line-soft)}
+.form-section-title{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:11px;font-weight:650;color:var(--ink-2);letter-spacing:.02em}
+.form-section-title .description{font-size:11px;font-weight:400;color:var(--ink-4);letter-spacing:0}
+.fields{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));column-gap:16px;row-gap:12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0;grid-column:span 3}
+.field.half{grid-column:span 3}.field.third{grid-column:span 2}.field.two-thirds{grid-column:span 4}.field.full{grid-column:1/-1}
+.field label{color:var(--ink-2);font-size:11px;font-weight:550;display:flex;justify-content:space-between;gap:6px;align-items:center;line-height:1.3}
+.field label em{font-style:normal;font-size:11px;font-weight:400;color:var(--ink-4)}
+.field input,.field select,.field textarea{width:100%;height:32px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:0 4px;color:var(--ink);outline:0;min-width:0;font-size:12px}
+.field input::placeholder{color:var(--ink-4)}
+.field input:hover,.field select:hover{border-bottom-color:var(--line-strong)}
+.field input:focus,.field select:focus,.field textarea:focus{border-bottom-color:var(--accent);box-shadow:0 1px 0 var(--accent);background:transparent}
+.field input:disabled{color:var(--ink-3);border-bottom-style:dashed}
+.field textarea{min-height:58px;border:1px solid var(--line);padding:8px;resize:vertical;border-radius:var(--r)}
+#number{height:36px;border-bottom:2px solid var(--ink);font:600 16px/1 var(--mono);letter-spacing:.09em}
+#number::placeholder{font:400 12px/1 var(--font);letter-spacing:0;color:var(--ink-4)}
+#number:focus{border-bottom-color:var(--accent)}
+.field:has(#number) label{color:var(--ink);font-weight:650}
+.lookup-wrap{position:relative}
+.suggestions{position:absolute;top:calc(100% + 3px);left:0;right:0;z-index:60;max-height:220px;overflow:auto;background:var(--paper);border:1px solid var(--line-strong);border-radius:var(--r);padding:4px}
+.suggestions button{width:100%;text-align:left;border:0;border-radius:var(--r);background:transparent;padding:7px 9px;color:var(--ink)}
+.suggestions button:hover,.suggestions button.active{background:var(--line-soft)}
+.suggestions strong{display:block;font-size:12px;font-weight:600}
+.suggestions small{display:block;font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.form-foot{border-top:1px solid var(--line-soft);margin-top:18px;padding-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.form-foot small{font-size:11px;color:var(--ink-3)}
+.foot-buttons{display:flex;gap:6px}
+
+.list-panel{padding:0}
+.list-panel .section-head{padding:16px 24px 12px;margin:0;border-bottom:1px solid var(--line-soft)}
+.list-columns,.wb-row{display:grid;grid-template-columns:120px minmax(0,1.4fr) minmax(0,1fr) 80px 100px 170px;gap:12px;align-items:center;padding:0 24px}
+.list-columns{height:32px;background:var(--paper);border-bottom:1px solid var(--line);font-size:11px;font-weight:650;color:var(--ink-4);letter-spacing:.02em}
+.waybill-list{height:340px;overflow:auto}
+.wb-row{height:44px;border-bottom:1px solid var(--line-soft);cursor:pointer;font-size:12px}
+.wb-row:hover{background:#f7f9fb}
+.wb-row:nth-child(even){background:#fbfcfd}
+.wb-row:nth-child(even):hover{background:#f7f9fb}
+.wb-row .wb-no{font:600 13px/1.3 var(--mono);color:var(--ink)}
+.wb-row .wb-main,.wb-row .wb-cargo{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.wb-row .wb-num{font:500 12px/1.3 var(--mono);color:var(--ink-2);text-align:right}
+.wb-row .wb-num.wb-route{font:400 12px/1.3 var(--font);text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wb-row .wb-ops{display:flex;gap:2px;justify-content:flex-end}
+.wb-row .wb-ops .btn{padding:0 7px;font-size:11px}
+.wb-empty{padding:48px 24px;text-align:center;color:var(--ink-4);font-size:12px;line-height:1.7}
+
+.demo-drawer{margin-top:12px;background:var(--paper);border:1px solid var(--line)}
+.demo-drawer>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:11px 24px;font-size:12px;font-weight:650;color:var(--ink-2)}
+.demo-drawer>summary::-webkit-details-marker{display:none}
+.demo-drawer>summary::before{content:"";width:0;height:0;border-left:5px solid var(--ink-3);border-top:4px solid transparent;border-bottom:4px solid transparent}
+.demo-drawer[open]>summary::before{transform:rotate(90deg)}
+.demo-drawer[open]>summary{border-bottom:1px solid var(--line-soft)}
+.drawer-body{padding:16px 24px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+.drawer-col{min-width:0}
+.drawer-col h3{font-size:12px;font-weight:650;margin-bottom:8px}
+.compact-note{font-size:11px;color:var(--ink-3);margin:0 0 10px;line-height:1.6}
+#mock-message{width:100%;border:1px solid var(--line);border-radius:var(--r);padding:8px;font:400 12px/1.6 var(--mono);color:var(--ink);resize:vertical;min-height:56px}
+#mock-message:focus{border-color:var(--accent);outline:0;box-shadow:0 0 0 2px var(--focus)}
+.drawer-actions{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.capability-list{display:flex;flex-direction:column}
+.capability{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:11px;color:var(--ink-2)}
+.cap-off{font-size:11px;color:var(--ink-4);flex:none}
+.status-card{border-top:1px solid var(--line-soft);padding:8px 0}
+.step{display:flex;align-items:start;gap:8px;margin:7px 0}
+.dot{width:6px;height:6px;background:var(--ink-3);border-radius:50%;margin-top:5px;flex:none}
+.dot.dim{background:var(--ink-4)}
+.step b{font-size:11px;font-weight:600;display:block}
+.step span{font-size:11px;color:var(--ink-3);display:block;line-height:1.5}
+.drawer-note{grid-column:1/-1;border-top:1px solid var(--line-soft);padding-top:10px;font-size:11px;color:var(--ink-3);line-height:1.6}
+.footer{display:flex;justify-content:space-between;gap:12px;padding:12px 0;color:var(--ink-4);font:400 11px/1.5 var(--mono)}
+
+.overlay{position:fixed;inset:0;z-index:150;display:flex}
+.overlay-mask{position:absolute;inset:0;background:rgba(18,28,38,.5)}
+.drawer{position:relative;margin-left:auto;width:min(520px,100%);height:100%;background:var(--paper);border-left:1px solid var(--line);display:flex;flex-direction:column}
+.modal{position:relative;margin:auto;width:min(720px,calc(100% - 32px));max-height:min(88vh,900px);background:var(--paper);border:1px solid var(--line-strong);border-radius:var(--r);display:flex;flex-direction:column}
+.modal-wide{width:min(980px,calc(100% - 32px))}
+.overlay-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 20px;border-bottom:1px solid var(--line);flex:none}
+.eyebrow{display:block;font:600 11px/1.4 var(--mono);letter-spacing:.08em;color:var(--ink-3);margin-bottom:4px}
+.overlay-head h2{font-size:17px;font-weight:650}
+.overlay-body{padding:16px 20px;overflow:auto;flex:1;min-height:0}
+.overlay-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 20px;border-top:1px solid var(--line);flex:none}
+.overlay-foot>div{display:flex;gap:6px}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px}
+.detail-grid .wide{grid-column:1/-1}
+.detail-grid small{display:block;color:var(--ink-3);font-size:11px;margin-bottom:2px}
+.detail-grid span{display:block;font-size:13px;font-weight:550;overflow-wrap:anywhere}
+.detail-status{margin-top:18px;padding-top:14px;border-top:1px solid var(--line-soft)}
+.detail-status h3{font-size:12px;font-weight:650;margin-bottom:8px}
+.state-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line-soft);font-size:12px;color:var(--ink-2)}
+.state-row span:last-child{color:var(--ink-4);font-size:11px}
+.env-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.env-bar label{font-size:11px;color:var(--ink-2)}
+.env-bar select{height:30px;border:1px solid var(--line);border-radius:var(--r);background:var(--paper);padding:0 8px;font-size:12px;color:var(--ink)}
+.env-stage{display:flex;align-items:center;justify-content:center;min-height:330px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r);overflow:auto;padding:12px}
+.env-stage .envelope-paper{transform:scale(.78);transform-origin:center center;flex:none}
+.ledger-note{font-size:12px;color:var(--ink-3);line-height:1.6;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line-soft)}
+.ledger-table{max-height:420px;overflow:auto}
+.word-slot{max-height:460px;overflow:auto;border:1px solid var(--line-soft)}
+.month-list{display:flex;flex-direction:column}
+.month-row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:12px;color:var(--ink-2)}
+.month-row b{font:600 12px/1.4 var(--mono);color:var(--ink)}
+.wb-row .wb-no small{display:block;font:400 10px/1.3 var(--font);color:var(--ink-3);margin-top:1px;letter-spacing:0}
+.wb-row .wb-no small.unassigned{color:var(--ink-4)}
+.msg-raw{font:400 12px/1.6 var(--mono);background:var(--bg);padding:10px 12px;border-radius:var(--r);word-break:break-all;margin-bottom:4px}
+.msg-label{font-size:11px;font-weight:650;color:var(--ink-2);margin:14px 0 6px}
+.msg-parse{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:12px;color:var(--ink-2)}
+.msg-parse small{display:block;color:var(--ink-3);font-size:11px}
+.msg-row{display:grid;grid-template-columns:100px 92px minmax(0,1fr);gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);font-size:12px}
+.msg-row b{font:600 12px/1.4 var(--mono)}
+.msg-row .m-ok{color:var(--ink);font-weight:650}
+.msg-row .m-dup{color:var(--ink-3)}
+.msg-row span:last-child{color:var(--ink-2);overflow-wrap:anywhere}
+.msg-summary{margin-top:14px;padding:12px;background:var(--bg);border-radius:var(--r);font-size:12px;line-height:1.7;color:var(--ink)}
+.msg-summary b{font:650 14px/1.4 var(--mono);color:var(--ink)}
+.msg-reject{color:var(--danger);font-weight:650}
+
+.output-panel{font-size:12px}
+.output-note{padding:14px;color:var(--ink-3);font-size:12px;line-height:1.6}
+.output-head{display:flex;gap:12px;align-items:baseline;justify-content:space-between;background:transparent;border-bottom:1px solid var(--line);padding:8px 10px;font:400 11px/1.4 var(--mono);color:var(--ink-3)}
+.output-head b{color:var(--ink);font:600 12px/1.4 var(--mono)}
+.output-content{padding:12px 10px}
+.output-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}
+.output-cell{min-width:0}
+.output-cell.wide{grid-column:1/-1}
+.output-cell small{display:block;color:var(--ink-4);font-size:11px}
+.output-cell div{font-size:12px;font-weight:600;overflow-wrap:anywhere;margin-top:2px}
+.preview-scroll{overflow:auto;max-height:300px}
+.preview-table{border-collapse:collapse;white-space:nowrap;width:max-content;min-width:100%;font:400 11px/1.4 var(--mono)}
+.preview-table th,.preview-table td{padding:7px 10px;border:0;border-bottom:1px solid var(--line-soft);text-align:left}
+.preview-table th{background:transparent;color:var(--ink-3);font-weight:650;border-bottom:1px solid var(--line)}
+.small-note{font-size:11px;color:var(--ink-3);padding:0 10px 10px;line-height:1.6}
+.muted-warn{color:var(--ink-4)!important}
+.records-head,.rec{display:grid;grid-template-columns:92px minmax(0,1fr) 62px;gap:8px;align-items:center;padding:0 10px;height:28px}
+.records-head{font-size:11px;color:var(--ink-4)}
+.records{min-height:40px}
+.rec{font-size:12px;border-bottom:1px solid var(--line-soft)}
+.rec b{font:600 12px/1.3 var(--mono)}
+.empty{font-size:12px;color:var(--ink-4);padding:20px 10px}
+
+.word-wrap{min-height:120px}
+.word-empty{padding:44px 20px;text-align:center;color:var(--ink-3);font-size:12px;line-height:1.7}
+.group-selector{display:flex;gap:4px;overflow:auto;padding:8px 12px;background:transparent;border-bottom:1px solid var(--line-soft)}
+.group-selector button{border:0;border-bottom:2px solid transparent;padding:5px 9px;min-height:25px;border-radius:0;background:transparent;color:var(--ink-2);font:400 11px/1.3 var(--mono);white-space:nowrap}
+.group-selector button:hover{background:var(--line-soft)}
+.group-selector button.active{background:transparent;border-bottom-color:var(--ink);color:var(--ink);font-weight:650}
+.word-meta{padding:7px 12px;color:var(--ink-3);font:400 11px/1.4 var(--mono);border-bottom:1px solid var(--line-soft)}
+/* 发车清单：内容与列序按 26.10.30孙立伟车发车清单.xls 还原。
+   纸面在浮层里按比例缩到可视宽度，真实的纸张/缩放/字号由导出的 .xlsx 决定。 */
+.word-page{background:transparent;padding:10px 12px}
+.word-paper{width:100%;max-width:980px;margin:0 auto;background:#fff;box-sizing:border-box;padding:14px 10px 16px;box-shadow:0 1px 10px rgba(20,35,50,.14)}
+.word-sheet{width:100%;background:#fff;color:#000;font-family:"Microsoft YaHei","微软雅黑","PingFang SC",sans-serif;font-size:11px;line-height:1.2}
+.word-table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:11px;color:#000;font-weight:700}
+.word-table td{border:1px solid #000;height:22px;padding:0 4px;text-align:center;vertical-align:middle;overflow:hidden;white-space:nowrap}
+.word-table td.l{text-align:left}
+.word-table td.nb{border:0}
+.word-table td.lb{border:0;border-left:1px solid #000}
+.word-table td.rb{border:0;border-right:1px solid #000}
+.word-table td.tb{border:0;border-top:1px solid #000;font-size:12px}
+.word-table td.ltb{border:0;border-left:1px solid #000;border-top:1px solid #000;font-size:12px}
+.word-table td.rtb{border:0;border-right:1px solid #000;border-top:1px solid #000;font-size:12px}
+.word-table td.titlebar{border:0;border-top:1px solid #000;border-left:1px solid #000;border-right:1px solid #000;font-size:12px;text-align:center}
+.word-table th{display:none}
+.word-title{display:none}
+.word-download{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--line-soft)}
+.word-hint{padding:0 12px 10px;color:var(--ink-4);font-size:11px;line-height:1.6}
+.msg-error{color:var(--danger)!important;font-weight:600}
+
+.envelope-backdrop{position:fixed;inset:0;z-index:170;background:rgba(18,28,38,.58);display:flex;align-items:center;justify-content:center;padding:16px}
+.envelope-dialog{background:var(--paper);width:min(1140px,100%);max-height:min(92vh,960px);display:flex;flex-direction:column;border:1px solid var(--line-strong);border-radius:var(--r);overflow:hidden}
+.env-dialog-head{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:start;justify-content:space-between;gap:16px;flex:none}
+.env-dialog-head h2{font-size:16px;font-weight:650;margin:0}
+.env-dialog-head p{margin:4px 0 0;font-size:12px;color:var(--ink-3)}
+.env-dialog-head .eyebrow{font:600 11px/1.4 var(--mono);letter-spacing:.08em;color:var(--ink-3);margin-bottom:4px}
+.envelope-content{display:grid;grid-template-columns:270px minmax(0,1fr);min-height:0;overflow:auto;flex:1}
+.envelope-picker{border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.env-setting{display:flex;flex-direction:column;gap:4px}
+.env-setting label{font-size:11px;font-weight:550;color:var(--ink-2)}
+.env-setting input,.env-setting select{width:100%;height:30px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent;padding:0 4px;color:var(--ink);font-size:12px}
+.env-custom{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.env-list-title{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-top:4px}
+.env-list-title strong{font-size:12px;font-weight:650}
+.env-list-title span{font:400 11px/1 var(--mono);color:var(--ink-3)}
+.env-waybill-list{border:1px solid var(--line);border-radius:var(--r);min-height:120px;max-height:240px;overflow-y:auto}
+.env-item{display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--line-soft);padding:8px 9px;cursor:pointer;min-height:44px}
+.env-item:last-child{border-bottom:0}
+.env-item:hover,.env-item.active{background:var(--line-soft)}
+.env-item input{width:15px;height:15px;accent-color:var(--ink);flex:none;margin:0}
+.env-item .env-record{min-width:0;flex:1}
+.env-item .env-record b{display:block;font:600 12px/1.4 var(--mono)}
+.env-item .env-record small{display:block;color:var(--ink-3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.env-pick-actions{display:flex;gap:6px}
+.env-pick-actions button{flex:1}
+.envelope-preview-pane{padding:16px 20px;display:flex;flex-direction:column;gap:10px;min-width:0;overflow:hidden;background:var(--bg)}
+.env-preview-title{display:flex;align-items:baseline;justify-content:space-between;gap:15px}
+.env-preview-title strong{font-size:12px;font-weight:650}
+.env-preview-title span{font:400 11px/1.4 var(--mono);color:var(--ink-3)}
+.env-preview-stage{display:flex;align-items:center;justify-content:center;position:relative;min-height:290px;max-width:100%;overflow:hidden;background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:10px}
+.env-print-tip{font-size:11px;color:var(--ink-3);line-height:1.6;margin:0}
+.env-dialog-foot{display:flex;justify-content:space-between;align-items:center;gap:18px;border-top:1px solid var(--line);padding:12px 20px;flex:none}
+.env-dialog-foot span{font-size:11px;color:var(--ink-3);line-height:1.5}
+#print-root{display:none}
+.toast{position:fixed;left:50%;bottom:20px;z-index:200;transform:translate(-50%,10px);opacity:0;pointer-events:none;background:var(--ink);color:#fff;border-radius:var(--r);padding:9px 14px;font-size:12px;transition:transform .18s,opacity .18s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (max-width:1100px){
+  .shell{padding:0 14px 20px}
+  .topbar{margin:0 -14px;padding:0 14px}
+  .list-columns,.wb-row{grid-template-columns:104px minmax(0,1.2fr) minmax(0,1fr) 70px 88px 150px;gap:8px;padding:0 16px}
+  .entry{padding:18px 16px}
+  .list-panel .section-head{padding:14px 16px 10px}
+  .drawer-body{padding:14px 16px;gap:16px}
+  .demo-drawer>summary{padding:10px 16px}
+}
+@media (max-width:820px){
+  .page-head{gap:8px 12px}
+  .actions{margin-left:0;width:100%}
+  .list-columns,.wb-row{grid-template-columns:96px minmax(0,1fr) 70px 140px;gap:8px}
+  .list-columns span:nth-child(3),.list-columns span:nth-child(5),.wb-row .wb-cargo,.wb-row .wb-num:nth-of-type(2){display:none}
+  .drawer-body{grid-template-columns:1fr}
+  .envelope-content{grid-template-columns:1fr}
+  .envelope-picker{border-right:0;border-bottom:1px solid var(--line)}
+}
+@media (max-width:620px){
+  .shell{padding:0 10px 20px}
+  .topbar{margin:0 -10px;padding:8px 10px;height:auto;min-height:48px;flex-wrap:wrap;gap:8px}
+  .global-search{width:100%;order:3}
+  .top-spacer{display:none}
+  .top-status{display:none}
+  .page-title p,.hint{display:none}
+  .page-title h1{font-size:17px}
+  .fields{column-gap:10px}
+  .field,.field.half,.field.third,.field.two-thirds{grid-column:1/-1}
+  .field.mobile-half{grid-column:span 3}
+  .form-foot{flex-direction:column;align-items:stretch}
+  .foot-buttons{width:100%}
+  .foot-buttons .btn-primary{flex:1}
+  .list-columns,.wb-row{grid-template-columns:88px minmax(0,1fr) 110px;gap:6px;padding:0 12px}
+  .list-columns span:nth-child(4),.list-columns span:nth-child(5),.wb-row .wb-num{display:none}
+  .wb-row .wb-ops{gap:0}
+  .wb-row .wb-ops .btn{padding:0 5px}
+  .drawer{width:100%}
+  .modal,.modal-wide{width:calc(100% - 20px)}
+  .overlay-head,.overlay-body,.overlay-foot{padding-left:14px;padding-right:14px}
+  .envelope-backdrop{padding:0}
+  .envelope-dialog{height:100%;max-height:100vh;border-radius:0;border:0}
+  .env-dialog-foot{flex-direction:column;align-items:stretch}
+  .footer{flex-direction:column;gap:4px}
+}
+/* AI 操作记录（右上角入口 + 右侧滑出面板；实测版入口隐藏） */
+.ai-entry{flex:none;background:var(--paper);border:1px solid var(--line-strong);border-radius:var(--r);padding:5px 10px;font-size:12px;color:var(--accent);white-space:nowrap}
+.ai-entry:hover{background:#f2f7fc}
+.ai-badge{display:inline-block;min-width:16px;padding:0 4px;margin-left:4px;background:var(--accent);color:#fff;border-radius:8px;font:500 11px/16px var(--mono);text-align:center}
+.ai-drawer{width:min(500px,94vw)}
+.ai-demo{margin:12px 18px 0;padding:9px 11px;border:1px solid #e6d2bf;background:#fdf7f1;color:#8a5a2b;font-size:11px;line-height:1.7;border-radius:var(--r)}
+.ai-tools{padding:12px 18px 10px;border-bottom:1px solid var(--line-soft)}
+.ai-stat{font-size:12px;color:var(--ink-2);margin-bottom:10px}
+.ai-push-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ai-push-row select,.ai-pick{height:30px;padding:0 8px;font-size:12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink);max-width:100%}
+.ai-body{background:#fafbfc}
+.ai-card{background:var(--paper);border:1px solid var(--line);border-left:3px solid var(--line-strong);border-radius:var(--r);padding:12px 14px;margin-bottom:10px}
+.ai-card.green{border-left-color:#3b8a5f}
+.ai-card.yellow{border-left-color:#c08a2e}
+.ai-card.red{border-left-color:#b8544a}
+.ai-head{display:flex;align-items:baseline;gap:10px;margin-bottom:7px}
+.ai-score{font:500 20px/1 var(--mono);color:var(--ink)}
+.ai-band{font-size:12px;font-weight:650;padding:2px 8px;border-radius:2px}
+.ai-band.green{color:#2f6b4a;background:#eaf3ec}
+.ai-band.yellow{color:#8a5a2b;background:#fdf3e3}
+.ai-band.red{color:#a23e34;background:#fbedeb}
+.ai-time{margin-left:auto;font:400 11px/1 var(--mono);color:var(--ink-4)}
+.ai-cand{font:500 13px/1.5 var(--mono);color:var(--ink)}
+.ai-raw{font-size:12px;color:var(--ink-2);line-height:1.7;margin:4px 0}
+.ai-meta{font-size:11px;color:var(--ink-4);line-height:1.6}
+.ai-reason{font-size:11px;color:var(--ink-3);margin-top:5px;line-height:1.6}
+.ai-redline{font-size:11px;color:#a23e34;background:#fbedeb;padding:5px 8px;margin-top:6px;border-radius:2px;line-height:1.6}
+.ai-reverted{font-size:11px;color:var(--ink-3);margin-top:6px}
+.ai-acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+.ai-acts .btn{padding:3px 9px;font-size:11px}
+.ai-ev{margin-top:12px;padding:11px 12px;background:#f7f9fb;border:1px solid var(--line-soft);border-radius:var(--r)}
+.ai-ev h4{font-size:12px;font-weight:650;margin:0 0 8px}
+.ai-ev-raw{font-size:11px;color:var(--ink-2);line-height:1.7;margin-bottom:3px}
+.ai-ev-row{display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-bottom:1px solid var(--line-soft);font-size:11px;line-height:1.5}
+.ai-ev-row:last-of-type{border-bottom:0}
+.ai-ev-row .ai-mark{font:600 12px/1.4 var(--mono);flex:none}
+.ai-ev-row.ok .ai-mark{color:#2f6b4a}
+.ai-ev-row.no .ai-mark{color:#b8544a}
+.ai-ev-row small{flex-basis:100%;color:var(--ink-4);font-size:11px;padding-left:19px}
+.ai-ev-sum{font-size:11px;font-weight:650;color:var(--ink);margin-top:9px;line-height:1.6}
+.ai-ev-note{font-size:11px;color:var(--ink-4);margin-top:6px;line-height:1.7}
+@media (max-width:680px){.ai-entry{padding:4px 7px;font-size:11px}.ai-push-row select{width:100%}}
+@media print{.ai-entry,.ai-drawer,.ai-demo{display:none!important}}
+/* 钱和纸：货出门以后的费用、回单、账单差异、交付登记（点开才出现） */
+.ops-tabs{display:flex;gap:0;border-bottom:1px solid var(--line);padding:0 18px;flex:none}
+.ops-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 14px;font-size:12px;color:var(--ink-3);margin-bottom:-1px}
+.ops-tabs button:hover{color:var(--ink)}
+.ops-tabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:650}
+.ops-pane{min-height:180px}
+.ops-note,.ops-hint{font-size:11px;color:var(--ink-3);line-height:1.7;margin:0 0 12px}
+.ops-hint{padding:8px 10px;background:#f7f9fb;border-left:2px solid var(--line-strong)}
+.ops-h3{font-size:12px;font-weight:650;color:var(--ink-2);margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line-soft)}
+.ops-empty{font-size:12px;color:var(--ink-4);padding:10px 0;line-height:1.7}
+.ops-form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end;padding:12px;background:#fafbfc;border:1px solid var(--line-soft)}
+.ops-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ops-field small{font-size:11px;color:var(--ink-3)}
+.ops-field input,.ops-field select,.ops-pane textarea{width:100%;height:30px;padding:0 8px;font-size:12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink)}
+.ops-pane textarea{height:auto;padding:8px;line-height:1.6;font-family:var(--mono);resize:vertical}
+.ops-form>.btn{grid-column:span 4;justify-self:start}
+.ops-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:12px}
+.ops-row b{font:600 12px/1.3 var(--mono);color:var(--ink);min-width:74px}
+.ops-row>span{color:var(--ink-2)}
+.ops-row small{flex-basis:100%;color:var(--ink-4);font-size:11px;line-height:1.6}
+.ops-row .btn{padding:3px 8px;font-size:11px}
+.ops-row .btn.done{border-color:var(--line-strong);color:var(--ink-3)}
+.ops-badge{font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:2px;color:var(--ink-3);white-space:nowrap}
+.ops-badge.ok{color:#2f6b4a;border-color:#cfe0d5;background:#f2f8f4}
+.ops-badge.warn{color:#a4552c;border-color:#e6d2bf;background:#fdf7f1}
+.ops-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:12px}
+.ops-check{font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:4px;min-width:0}
+.ops-check input{flex:none}
+@media (max-width:900px){.ops-form{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-form>.btn{grid-column:span 2}.ops-pick{grid-template-columns:1fr}.ops-tabs{overflow-x:auto;padding:0 10px}.ops-tabs button{white-space:nowrap;padding:10px 9px}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+@media print{
+  .topbar,.page-head,.entry,.list-panel,.demo-drawer,.footer,.toast,.global-search,.overlay,.envelope-backdrop{display:none!important}
+  .overlay.print-active{display:flex!important;position:static!important;inset:auto!important}
+  .overlay.print-active .overlay-mask,.overlay.print-active .overlay-head,.overlay.print-active .overlay-foot{display:none!important}
+  .overlay.print-active .modal,.overlay.print-active .drawer{position:static!important;width:100%!important;height:auto!important;max-height:none!important;border:0!important;display:flex!important;flex-direction:column}
+  .overlay.print-active .overlay-body{overflow:visible!important;max-height:none!important;flex:1}
+  .overlay.print-active .ledger-table,.overlay.print-active .word-slot{max-height:none!important;overflow:visible!important;border:0!important}
+  body{background:#fff;font-size:14px}
+  .shell{padding:0}
+}
+
+/* 数据积累后可就地筛选：只在条目超过 6 条时出现，不改变勾选、提交与打印 */
+.jl-filterbar{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line-soft);background:#fafbfc}
+.jl-filterbar[hidden]{display:none!important}
+.jl-filter-input{flex:1;min-width:0;height:26px;padding:0 8px;font-size:12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink)}
+.jl-filter-input:focus{outline:0;border-color:var(--ink-3)}
+.jl-filter-count{font:400 11px/1 var(--mono);color:var(--ink-3);white-space:nowrap}
+.jl-filter-tip{font-size:11px;color:var(--ink-4);white-space:nowrap}
+.jl-select-search{width:100%;height:26px;margin-bottom:4px;padding:0 8px;font-size:11px;border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink)}
+.jl-select-search:focus{outline:0;border-color:var(--ink-3)}
+/* 运单编号：一个框就是下拉。原生 select 视觉隐藏但仍在，值与事件照旧 */
+.jl-picker{position:relative;width:100%}
+.jl-picker-input{width:100%;height:30px;padding:0 9px;font-size:12px;border:1px solid var(--line);border-radius:var(--r);background:#fff;color:var(--ink)}
+.jl-picker-input:focus{outline:0;border-color:var(--ink-3)}
+.jl-picker-native{position:absolute!important;left:0;top:0;width:1px!important;height:1px!important;opacity:0;border:0!important;padding:0!important;margin:0!important;pointer-events:none}
+.jl-picker-pop{position:absolute;z-index:90;left:0;right:0;top:calc(100% + 2px);max-height:216px;overflow:auto;background:#fff;border:1px solid var(--line-strong);border-radius:var(--r);padding:3px;box-shadow:0 8px 22px rgba(20,24,30,.12)}
+.jl-picker-pop[hidden]{display:none!important}
+.jl-picker-item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:6px 8px;font-size:12px;color:var(--ink);border-radius:3px;cursor:pointer}
+.jl-picker-item:hover,.jl-picker-item.active{background:var(--line-soft)}
+.jl-picker-empty{padding:8px;font-size:12px;color:var(--ink-3)}
+.jl-group-search{width:150px;flex:none;height:24px;padding:0 7px;font-size:11px;border:1px solid var(--line);border-radius:var(--r);background:#fff}
+.jl-group-search[hidden]{display:none!important}
+.jl-hide{display:none!important}
+@media print{
+ .jl-filterbar,.jl-group-search,.jl-select-search{display:none!important}
+ .jl-hide{display:revert!important}
+}
+
+/* 信封纸张与分页打印规则：与 V7 原样保留 */
+.envelope-paper{background:#fff;color:#000;border:1px solid #dbe1e6;box-shadow:0 4px 30px rgba(20,35,50,.12);display:block;padding:0;overflow:hidden;box-sizing:border-box;font-family:"SimSun","Songti SC","宋体",serif;line-height:1.2;position:relative}
+.env-f{position:absolute;white-space:nowrap;line-height:1.2}
+.env-paper-header{display:flex;align-items:start;justify-content:space-between;border-bottom:3px solid #183f5f;padding-bottom:11px;gap:15px}
+.env-paper-header .env-title{font-size:29px;font-weight:800;letter-spacing:2px;color:#183f5f}.env-paper-header .env-subtitle{font-size:13px;color:#4c6073;margin-top:3px}
+.env-paper-header .env-number{font-size:25px;font-weight:760;letter-spacing:1px;color:#153e63;text-align:right;font-variant-numeric:tabular-nums}.env-paper-header .env-number-label{font-size:12px;color:#647587;text-align:right}
+.env-dest{padding:9px 13px;background:#eef3f6;border-radius:7px;font-weight:750;font-size:21px;display:flex;gap:14px}.env-dest small{font-size:13px;color:#617487;font-weight:530;align-self:center}
+.env-recipient{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px 16px;border-bottom:1px solid #e2e7eb;padding-bottom:10px}
+.env-info{min-width:0}.env-info small{font-size:12px;color:#617487;display:block;margin-bottom:3px}.env-info strong{font-size:18px;font-weight:680;overflow-wrap:anywhere;display:block}
+.env-info.wide{grid-column:1/-1}.env-info.wide strong{font-size:16px}
+.env-cargo{display:grid;grid-template-columns:minmax(0,1.7fr) 1fr 1fr;gap:12px}.env-cargo strong{font-size:16px}
+.env-return{margin-top:auto;background:#f6f8fa;border-left:4px solid #183f5f;padding:9px 12px;font-size:13px;line-height:1.5}
+.env-paper-footer{font-size:11px;color:#617487;display:flex;justify-content:space-between;gap:12px}
+.envelope-paper.compact{gap:7px;padding:5mm 7mm}.envelope-paper.compact .env-paper-header{padding-bottom:6px}.envelope-paper.compact .env-paper-header .env-title{font-size:21px}.envelope-paper.compact .env-paper-header .env-subtitle{font-size:10px}.envelope-paper.compact .env-paper-header .env-number{font-size:18px}.envelope-paper.compact .env-dest{font-size:16px;padding:6px 9px}.envelope-paper.compact .env-recipient{padding-bottom:6px;gap:5px 10px}.envelope-paper.compact .env-info small{font-size:10px}.envelope-paper.compact .env-info strong{font-size:13px}.envelope-paper.compact .env-cargo strong{font-size:12px}.envelope-paper.compact .env-return{font-size:10px;padding:5px 8px}.envelope-paper.compact .env-paper-footer{font-size:9px}
+
+@media print{
+ html,body{margin:0!important;padding:0!important;background:#fff!important}
+ .shell,.envelope-backdrop,#toast{display:none!important}
+ #print-root{display:block!important;position:static!important;margin:0!important;padding:0!important}
+ .envelope-print-page{break-after:page;page-break-after:always;overflow:hidden;box-sizing:border-box;margin:0;padding:0;border:0}
+ .envelope-print-page:last-child{break-after:auto;page-break-after:auto}
+ .envelope-print-page .envelope-paper{width:100%!important;height:100%!important;margin:0!important;border:0!important;box-shadow:none!important;transform:none!important}
+ }
+/* ── 视觉放大 v9.1（业务员反馈整体偏小看不清）
+   只放大屏幕界面：正文 12→14、小字 11→13、标题 14→17、页标题 20→24，
+   控件高度 +6、列表行 44→54。
+   不动纸面：.word-sheet / .word-table（发车清单 75% 缩放的真实版式）
+   与 .envelope-paper 全套（信封套印按 mm 折算），字号一律保持原值。 */
+body{font-size:14px;line-height:1.55}
+
+/* 顶栏 */
+.topbar{height:60px}
+.brand-sign{width:30px;height:30px;font:600 12px/1 var(--mono)}
+.brand-name{font-size:15px}
+.brand-meta{font-size:13px}
+.top-note{font-size:13px}
+.global-search{width:min(380px,32vw)}
+.global-search input{height:36px;font-size:14px;padding:0 8px 0 27px}
+.global-search::before{left:6px;top:12px;width:9px;height:9px;border-width:1.5px}
+.global-search::after{left:14px;top:20px;width:6px}
+.search-result{max-height:380px;padding:5px}
+.search-head{padding:7px 9px;font-size:13px}
+.search-row{grid-template-columns:108px minmax(0,1fr) 92px;padding:9px 10px;font-size:14px;gap:10px}
+.search-row b{font:600 13px/1.35 var(--mono)}
+.search-row small{font:400 13px/1.35 var(--mono)}
+.search-empty{padding:14px 11px;font-size:14px}
+.ai-entry{padding:6px 12px;font-size:14px}
+.ai-badge{font:500 12px/18px var(--mono)}
+
+/* 页头 */
+.page-head{padding:22px 0 20px}
+.page-title h1{font-size:24px}
+.page-title p{font-size:14px}
+.progress{font-size:14px}
+.progress b{font:650 17px/1 var(--mono)}
+
+/* 按钮 */
+.btn{height:34px;padding:0 13px;font-size:14px;gap:6px}
+.btn-primary,.primary{height:38px;padding:0 18px;font-size:15px}
+.btn-sm{height:32px;padding:0 11px;font-size:13px}
+.secondary{height:34px;padding:0 13px;font-size:14px}
+.smallprimary{height:34px;font-size:13px;padding:0 12px}
+
+/* 录入区 */
+.entry{padding:22px 26px 24px}
+.section-head h2{font-size:17px}
+.hint{font-size:13px}
+.err{height:36px;padding:7px 11px;font-size:14px}
+.form-section-title{font-size:13px;margin-bottom:12px}
+.form-section-title .description{font-size:13px}
+.fields{column-gap:18px;row-gap:14px}
+.field{gap:5px}
+.field label{font-size:13px}
+.field label em{font-size:13px}
+.field input,.field select,.field textarea{height:38px;font-size:14px;padding:0 5px}
+.field textarea{min-height:70px;padding:9px}
+#number{height:44px;font:600 20px/1 var(--mono)}
+#number::placeholder{font:400 14px/1 var(--font)}
+.suggestions button{padding:9px 11px}
+.suggestions strong{font-size:14px}
+.suggestions small{font-size:13px}
+.form-foot small{font-size:13px}
+
+/* 运单列表 */
+.list-columns,.wb-row{grid-template-columns:138px minmax(0,1.4fr) minmax(0,1fr) 94px 116px 194px}
+.list-columns{height:40px;font-size:13px}
+.wb-row{height:54px;font-size:14px}
+.wb-row .wb-no small{font:400 12px/1.3 var(--font)}
+.wb-row .wb-ops .btn{padding:0 9px;font-size:13px}
+.wb-empty{padding:52px 24px;font-size:14px}
+
+/* 演示抽屉 / 浮层 */
+.demo-drawer>summary{padding:13px 26px;font-size:14px}
+.drawer-col h3{font-size:14px}
+.compact-note{font-size:13px}
+.capability{font-size:13px;padding:7px 0}
+.cap-off{font-size:13px}
+.step b{font-size:13px}
+.step span{font-size:13px}
+.drawer-note{font-size:13px}
+.overlay-head{padding:18px 22px}
+.overlay-body{padding:18px 22px}
+.overlay-foot{padding:14px 22px}
+.overlay-foot>div{gap:8px}
+.eyebrow{font:600 13px/1.4 var(--mono)}
+.overlay-head h2{font-size:20px}
+.drawer{width:min(580px,100%)}
+.modal{width:min(800px,calc(100% - 32px))}
+.modal-wide{width:min(1040px,calc(100% - 32px))}
+.ai-drawer{width:min(560px,94vw)}
+
+/* 运单详情 */
+.detail-grid{gap:16px 22px}
+.detail-grid small{font-size:13px;margin-bottom:3px}
+.detail-grid span{font-size:15px}
+.detail-status h3{font-size:14px}
+.state-row{font-size:14px;padding:7px 0}
+.state-row span:last-child{font-size:13px}
+
+/* 信封选择与对账、日结浮层 */
+.env-bar label{font-size:13px}
+.env-bar select{height:36px;font-size:14px;padding:0 10px}
+.env-stage{min-height:380px;padding:14px}
+.ledger-note{font-size:14px}
+.ledger-table{max-height:460px}
+.word-slot{max-height:500px}
+.month-row{font-size:14px;padding:12px 0}
+.month-row b{font:600 14px/1.4 var(--mono)}
+.msg-raw{font:400 14px/1.6 var(--mono);padding:11px 13px}
+.msg-label{font-size:13px}
+.msg-parse{font-size:14px;gap:9px 18px}
+.msg-parse small{font-size:13px}
+.msg-row{grid-template-columns:112px 104px minmax(0,1fr);font-size:14px;padding:10px 0;gap:11px}
+.msg-row b{font:600 14px/1.4 var(--mono)}
+.msg-summary{font-size:14px;padding:13px}
+.msg-summary b{font:650 16px/1.4 var(--mono)}
+.output-panel{font-size:14px}
+.output-note{font-size:14px;padding:16px}
+.output-head{font:400 13px/1.4 var(--mono);padding:9px 11px}
+.output-head b{font:600 14px/1.4 var(--mono)}
+.output-cell small{font-size:13px}
+.output-cell div{font-size:14px}
+.preview-table{font:400 13px/1.4 var(--mono)}
+.preview-table th,.preview-table td{padding:8px 11px}
+.small-note{font-size:13px}
+.records-head,.rec{grid-template-columns:112px minmax(0,1fr) 76px;height:34px}
+.records-head{font-size:13px}
+.rec{font-size:14px}
+.rec b{font:600 14px/1.3 var(--mono)}
+.empty{font-size:14px;padding:22px 11px}
+.word-empty{font-size:14px}
+.word-hint{font-size:13px}
+.group-selector{padding:9px 14px}
+.group-selector button{font:400 13px/1.3 var(--mono);padding:7px 11px;min-height:31px}
+.word-meta{font:400 13px/1.4 var(--mono);padding:9px 14px}
+
+/* 弹层（环境设置、信封批量）—— 不含 .envelope-paper 纸面 */
+.env-dialog-head{padding:16px 22px}
+.env-dialog-head h2{font-size:18px}
+.env-dialog-head p{font-size:14px}
+.env-setting label{font-size:13px}
+.env-setting input,.env-setting select{height:36px;font-size:14px;padding:0 5px}
+.env-list-title strong{font-size:14px}
+.env-item .env-record small{font-size:13px}
+.env-preview-title strong{font-size:14px}
+.env-print-tip{font-size:13px}
+.env-dialog-foot span{font-size:13px}
+.toast{font-size:14px;padding:11px 16px;bottom:24px}
+
+/* AI 操作面板 */
+.ai-demo{font-size:13px;padding:11px 13px}
+.ai-stat{font-size:14px}
+.ai-push-row select,.ai-pick{height:36px;font-size:14px;padding:0 10px}
+.ai-band{font-size:14px}
+.ai-raw{font-size:14px}
+.ai-meta{font-size:13px}
+.ai-reason{font-size:13px}
+.ai-redline{font-size:13px;padding:7px 9px}
+.ai-reverted{font-size:13px}
+.ai-acts .btn{padding:4px 10px;font-size:13px}
+.ai-ev h4{font-size:14px}
+.ai-ev-raw{font-size:13px}
+.ai-ev-row{font-size:13px;padding:6px 0}
+.ai-ev-row small{font-size:13px}
+.ai-ev-sum{font-size:13px}
+.ai-ev-note{font-size:13px}
+
+/* 运营台 */
+.ops-tabs button{padding:12px 16px;font-size:14px}
+.ops-note,.ops-hint{font-size:13px}
+.ops-h3{font-size:14px;margin:20px 0 9px}
+.ops-empty{font-size:14px}
+.ops-field small{font-size:13px}
+.ops-field input,.ops-field select,.ops-pane textarea{height:36px;font-size:14px;padding:0 9px}
+.ops-row{font-size:14px;padding:10px 0}
+.ops-row small{font-size:13px}
+.ops-row .btn{padding:4px 9px;font-size:13px}
+.ops-badge{font-size:13px;padding:3px 8px}
+.ops-check{font-size:14px}
+
+/* 就地筛选、编号下拉 */
+.jl-filterbar{padding:9px 12px;gap:12px}
+.jl-filter-input{height:32px;font-size:14px;padding:0 9px}
+.jl-filter-count{font:400 13px/1 var(--mono)}
+.jl-filter-tip{font-size:13px}
+.jl-select-search{height:32px;font-size:13px;padding:0 9px}
+.jl-picker-input{height:36px;font-size:14px;padding:0 10px}
+.jl-picker-item{padding:8px 10px;font-size:14px}
+.jl-picker-empty{font-size:14px;padding:9px}
+.jl-group-search{width:170px;height:30px;font-size:13px;padding:0 8px}
+
+@media (max-width:1100px){
+  .list-columns,.wb-row{grid-template-columns:122px minmax(0,1.2fr) minmax(0,1fr) 84px 104px 174px}
+}
+@media (max-width:820px){
+  .list-columns,.wb-row{grid-template-columns:110px minmax(0,1fr) 84px 158px}
+}
+@media (max-width:620px){
+  .page-title h1{font-size:20px}
+  .list-columns,.wb-row{grid-template-columns:98px minmax(0,1fr) 124px}
+}
+</style>
+<style>
+/* ===== 外层：整页往下拽，露出底下的 AI 工作台 ===== */
+#jl-pull{display:flex;align-items:center;justify-content:center;height:20px;margin:0 0 6px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;position:relative;background:transparent}
+#jl-pull .grip{width:48px;height:4px;border-radius:2px;background:#d6dce2;transition:background .15s}
+#jl-pull:hover .grip{background:#a6b0ba}
+#jl-pull:focus-visible,#jl-ai-grip:focus-visible{outline:2px solid #a6b0ba;outline-offset:2px}
+#jl-first-hint{position:absolute;top:20px;left:50%;transform:translateX(-50%);z-index:20;white-space:nowrap;background:#fff;color:#67727c;padding:7px 12px;border-radius:8px;box-shadow:0 3px 15px #18222c12;font-size:12px;pointer-events:none}
+#jl-first-hint[hidden]{display:none}
+#jl-first-hint small{margin-left:10px;font-size:10px;color:#89929a}
+#jl-pull.jl-teach .grip{animation:jl-nudge 1.6s ease-in-out 3}
+#jl-pull.jl-unread .grip{background:#9c8051}
+#jl-pull.jl-unread::after{content:'';position:absolute;width:5px;height:5px;border-radius:50%;background:#9c8051;left:calc(50% + 32px)}
+body.jl-ai-open > .overlay{visibility:hidden}
+@keyframes jl-nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+@media(prefers-reduced-motion:reduce){#jl-pull.jl-teach .grip{animation:none}body > .shell{transition:none!important}}
+@media print{#jl-first-hint,#jl-pull{display:none!important}}
+#jl-pull .lbl,#jl-pull .peek{display:none}
+
+/* 手动台就是那张纸：有底色、能整块移动、压在上面 */
+body > .shell{position:relative;z-index:2;background:var(--bg);will-change:transform}
+body.jl-dragging{cursor:grabbing;overflow:hidden!important}
+body.jl-dragging > .shell,body.jl-ai-open > .shell{box-shadow:0 -14px 40px rgba(18,26,34,.12)}
+body.jl-dragging #jl-pull{cursor:grabbing}
+body.jl-ai-open{overflow:hidden!important}
+/* AI 完全打开后隐藏手动台：iOS 弹键盘会把整个文档往上顶，translateY 推出的纸会跟着滚回来漏出顶栏。
+   直接用 visibility 隐藏（保留布局不塌陷），无论键盘怎么顶都不会漏；关闭时立刻恢复。 */
+body.jl-ai-open.jl-ai-settled > .shell{visibility:hidden}
+/* 按钮切换模式：淡出淡入替代大幅位移，手感更顺；拖拽模式仍走原来的 translateY */
+body.jl-switch-mode > .shell{transition:opacity .28s ease,transform .28s ease!important}
+body.jl-switch-mode.jl-ai-open > .shell{opacity:0;transform:translateY(0)!important}
+body.jl-switch-mode > #jl-ai{transition:opacity .32s ease!important}
+/* 宽屏优化：手动台铺开，不再挤成中间一条（仅桌面宽屏，手机/窄屏不变） */
+@media(min-width:1400px){body > .shell{max-width:none;padding:0 clamp(32px,3.5vw,80px)}.topbar{margin:0 calc(-1 * clamp(32px,3.5vw,80px));padding:0 clamp(32px,3.5vw,80px)}}
+
+/* AI 台在纸底下：一直铺满视口，纸挪开多少就露多少 */
+#jl-ai{position:fixed;inset:0;z-index:1;background:#0b1118;visibility:hidden;display:flex;flex-direction:column}
+#jl-ai.jl-show{visibility:visible}
+#jl-ai-grip{position:absolute!important;top:0;left:calc(50% - 45px);width:90px;z-index:5;height:20px;display:flex;align-items:center;justify-content:center;background:transparent;border:0;touch-action:none;cursor:pointer;position:relative}
+#jl-ai-grip span{width:48px;height:4px;border-radius:2px;background:#d6dce2;display:block;transition:background .15s}
+#jl-ai-grip:hover span{background:#a6b0ba}
+#jl-ai iframe{flex:1 1 auto;width:100%;border:0;display:block;background:#0b1118}
+
+@media (max-width:640px){
+  #jl-pull .lbl{font-size:10.5px}
+  #jl-pull .peek{display:none}
+}
+/* logo 按钮进入 AI：点上方的巨龙 logo 即可打开，不再依赖下拉 */
+#jl-brand{cursor:pointer;-webkit-tap-highlight-color:transparent}
+#jl-brand:focus-visible{outline:2px solid var(--accent,#8a5a3b);outline-offset:3px;border-radius:6px}
+#jl-brand .brand-ai{margin-left:3px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;font-size:10px;color:var(--ink-3);font-weight:700;letter-spacing:.03em}
+/* 桌面一键切换：明确可见的 AI 入口，替代难抓的下拉把手 */
+.ai-switch{display:inline-flex;align-items:center;gap:7px;flex:none;height:34px;padding:0 14px;border:1px solid var(--accent,#1f5c9e);border-radius:999px;background:var(--accent,#1f5c9e);color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:transform .15s,box-shadow .15s,background .15s;white-space:nowrap}
+.ai-switch:hover{background:var(--accent-deep,#174a80);box-shadow:0 4px 14px rgba(31,92,158,.25);transform:translateY(-1px)}
+.ai-switch:active{transform:translateY(0)}
+.ai-switch-dot{width:7px;height:7px;border-radius:50%;background:#ffd98a;box-shadow:0 0 7px rgba(255,217,138,.7)}
+body.jl-ai-open .ai-switch{opacity:0;pointer-events:none}
+/* AI 台里的返回按钮：点它回手动台；下拉细条保留给桌面，但手机上隐藏 */
+#jl-ai-back{position:absolute!important;top:10px;left:50%;transform:translateX(-50%);z-index:6;display:none;align-items:center;gap:6px;border:1px solid #ffffff2b;background:#ffffff12;color:#e7edf3;border-radius:999px;padding:8px 14px;font-size:13px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#jl-ai-back.show{display:inline-flex}
+@media (max-width:640px){#jl-pull,#jl-ai-grip,#jl-ai-switch{display:none!important}}
+/* 桌面改用按钮切换，隐藏顶部下拉把手与 AI 内的上推把手，顶栏更干净（拖拽仍可用滚轮手势） */
+@media (min-width:641px){#jl-pull,#jl-ai-grip{display:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+<div id="jl-pull" role="button" tabindex="0" aria-label="打开 AI 工作台" aria-keyshortcuts="Control+Shift+Space Meta+Shift+Space"><span class="grip"></span><span id="jl-first-hint" role="status" hidden>下拉找我 <small>⌘ / Ctrl ⇧ 空格</small></span></div>
+<header class="topbar">
+  <div class="brand" id="jl-brand" role="button" tabindex="0" aria-label="打开 AI 工作台" title="点击打开 AI 工作台"><div class="brand-sign">JL</div><div><div class="brand-name">巨龙物流</div><div class="brand-meta">前端业务工作台</div></div><span class="brand-ai">AI</span></div>
+  <div class="top-spacer"></div>
+  <div class="global-search">
+    <label for="global-search">按运单编号、收货人或到站搜索</label>
+    <input id="global-search" type="search" autocomplete="off" placeholder="搜索运单编号 / 收货人 / 到站" />
+    <div id="search-result" class="search-result" hidden></div>
+  </div>
+
+  <button type="button" class="ai-switch" id="jl-ai-switch" aria-label="切换到 AI 工作台" title="切换到 AI 工作台"><span class="ai-switch-dot"></span>AI 工作台</button>
+  <div class="top-status"></div>
+</header>
+
+<div class="page-head">
+  <div class="page-title"><h1>今日运单</h1><p>合同录入一次，其余全部跟着运单走</p></div>
+  <div class="progress"><span id="day-label"></span><span class="dot-sep">·</span><b id="count">0</b> 票<span class="dot-sep">·</span>合计 <b id="total-weight">0.00</b> 吨<span class="dot-sep">·</span><span id="all-count">共0票</span></div>
+  <div class="actions">
+    <button type="button" class="btn btn-sm" id="btn-ledger">今日对账单</button>
+    <button type="button" class="btn btn-sm" id="btn-ops">费用与回单</button>
+    <button type="button" class="btn btn-sm" id="btn-word">发车清单</button>
+    <button type="button" class="btn btn-sm" id="btn-month">月账</button>
+    <button type="button" class="btn btn-sm" id="open-envelope">批量回执袋</button>
+  </div>
+</div>
+
+<section class="entry" aria-label="合同快速录入">
+  <div class="section-head"><h2 id="entry-title">录入一票运单</h2><span class="hint" id="entry-hint"></span></div>
+  <div id="error" class="err" role="alert"></div>
+  <form id="waybill-form" autocomplete="off">
+    <section class="form-section"><div class="form-section-title">单据识别</div>
+      <div class="fields"><div class="field half"><label for="number">厂家合同 / 前端运单编号 *</label><input id="number" name="number" inputmode="numeric" placeholder="如 0001312" required/></div>
+      <div class="field half"><label for="date">发货日期 *</label><input id="date" name="date" type="date" required/></div></div>
+    </section>
+    <section class="form-section"><div class="form-section-title">收货资料 <span class="description">老客户可搜索带出，不覆盖当票合同</span></div>
+      <div class="fields">
+        <div class="field half"><label for="receiver">收货人 * <em>可搜姓名 / 电话 / 地址</em></label><div class="lookup-wrap"><input id="receiver" name="receiver" required placeholder="输入关键字搜索，或填写新收货人" aria-controls="suggestions" aria-expanded="false" aria-autocomplete="list"/><div id="suggestions" class="suggestions" hidden></div></div></div>
+        <div class="field half"><label for="phone">联系电话 *</label><input id="phone" name="phone" required placeholder="手机号或座机"/></div>
+        <div class="field full"><label for="address">完整收货地址 *</label><input id="address" name="address" required placeholder="省市区、道路、门牌、仓库等详细地址"/></div>
+      </div>
+    </section>
+    <section class="form-section"><div class="form-section-title">货物与金额 <span class="description">运费按合同整票总额填写</span></div>
+      <div class="fields">
+        <div class="field third"><label for="destination">到站 * <em>输一个字就带出用过的</em></label><div class="lookup-wrap"><input id="destination" name="destination" autocomplete="off" placeholder="上海奉贤" required aria-controls="destination-suggestions" aria-expanded="false" aria-autocomplete="list"/><div id="destination-suggestions" class="suggestions" hidden></div></div></div>
+        <div class="field two-thirds"><label for="cargo">货物名称 * <em>历史货物自动带出</em></label><div class="lookup-wrap"><input id="cargo" name="cargo" autocomplete="off" placeholder="合同上的货物名称" required aria-controls="cargo-suggestions" aria-expanded="false" aria-autocomplete="list"/><div id="cargo-suggestions" class="suggestions" hidden></div></div></div>
+        <div class="field third mobile-half"><label for="qty">数量 * <em>同样的件数不必再打</em></label><div class="lookup-wrap"><input id="qty" name="qty" autocomplete="off" placeholder="如 8托 / 15件" required aria-controls="qty-suggestions" aria-expanded="false" aria-autocomplete="list"/><div id="qty-suggestions" class="suggestions" hidden></div></div></div>
+        <div class="field third mobile-half"><label for="weight">重量（吨） *</label><input id="weight" name="weight" inputmode="decimal" placeholder="如 2.22" required type="number" min="0.001" step="any" /></div>
+        <div class="field third" hidden><label for="freightTotal">厂家运费总额（元） * <em>仅内部对账，不出现在运单与发货清单</em></label><input id="freightTotal" name="freightTotal" inputmode="decimal" type="number" min="0" step="0.01" placeholder="输入整票运费"/></div>
+        <div class="field full"><label for="carrier">承运 / 中转方 * <em>输关键词带出历史，新合作方直接填写、保存后自动记住</em></label><div class="lookup-wrap"><input id="carrier" name="carrier" autocomplete="off" required placeholder="如：上海、江苏A；也可直接填写新合作方名称" aria-controls="carrier-suggestions" aria-expanded="false" aria-autocomplete="list"/><div id="carrier-suggestions" class="suggestions" hidden></div></div></div>
+        <div class="field full"><label for="remark">备注（选填）</label><input id="remark" name="remark" placeholder="合同中的其他说明"/></div>
+      </div>
+    </section>
+    <div class="form-foot"><small id="form-note"></small><div class="foot-buttons"><button type="button" class="btn btn-sm" id="cancel-edit" hidden>取消编辑</button><button class="btn btn-primary" type="submit" id="submit-btn">保存本票，继续录入　↵</button></div></div>
+  </form>
+</section>
+
+<section class="list-panel" aria-label="已生成运单">
+  <div class="section-head"><h2>已生成运单</h2></div>
+  <div class="list-columns"><span>运单编号</span><span>到站 · 收货人</span><span>货物 / 件数</span><span>重量</span><span>承运 / 中转方</span><span>操作</span></div>
+  <div class="waybill-list" id="waybill-list"></div>
+</section>
+
+<details class="demo-drawer" id="demo-tools" hidden>
+  <summary>系统状态</summary>
+  <div class="drawer-body">
+    <div class="drawer-col">
+      <div class="status-card"><div class="step"><div class="dot"></div><div><b>统一电子台账</b><span id="sync-state">录单保存后自动更新</span></div></div><div class="step"><div class="dot"></div><div><b>发车清单</b><span>按发运日期与合作方分组，一车一张</span></div></div></div>
+      
+      
+      <p class="compact-note" id="dispatch-status" hidden></p>
+      <p class="compact-note" id="mock-hint" hidden></p>
+      <div hidden><textarea id="mock-message"></textarea><button type="button" id="mock-send"></button><button type="button" id="demo-complete"></button><button type="button" id="seed"></button><button type="button" id="clear"></button><button type="button" id="mock-receive"></button><input type="date" id="dispatch-date"/><select id="dispatch-partner"><option value=""></option></select><textarea id="dispatch-ids"></textarea><details id="mock-tools"><summary>legacy</summary></details></div>
+    </div>
+  </div>
+</details>
+
+<div class="footer"><span>巨龙物流 · 业务工作台 · 内部试运行</span><span>信封与发车清单需现场校版</span></div>
+</div>
+
+<div class="legacy-only"><div class="records" id="records"></div><button type="button" id="show-latest"></button><button type="button" id="preview-csv"></button><div id="output-panel"></div><span id="output-state"></span><button type="button" id="export"></button><div id="word-wrap"></div><span id="word-dot"></span><span id="word-state"></span><section id="documents"></section></div>
+
+<div class="overlay" id="detail-overlay" hidden>
+  <div class="overlay-mask" data-close="detail-overlay"></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-label="运单详情">
+    <div class="overlay-head"><div><span class="eyebrow">运单详情</span><h2 id="detail-number">—</h2></div><button type="button" class="btn btn-sm" data-close="detail-overlay">关闭 ✕</button></div>
+    <div class="overlay-body" id="detail-body"></div>
+    <div class="overlay-foot"><div><button type="button" class="btn btn-sm" id="detail-print">打印运单</button><button type="button" class="btn btn-primary btn-sm" id="detail-edit">编辑运单</button></div></div>
+  </aside>
+</div>
+
+<div class="overlay" id="envelope-overlay" hidden>
+  <div class="overlay-mask" data-close="envelope-overlay"></div>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="信封封面预览">
+    <div class="overlay-head"><div><span class="eyebrow">回执袋封面 · 由该运单生成</span><h2 id="single-env-title">—</h2></div><button type="button" class="btn btn-sm" data-close="envelope-overlay">关闭 ✕</button></div>
+    <div class="overlay-body">
+      <div class="env-bar"><label for="single-env-size">纸张规格</label><select id="single-env-size"><option value="229x162">C5 · 229 × 162 mm</option><option value="250x176">B5 · 250 × 176 mm</option><option value="324x229">C4 · 324 × 229 mm</option><option value="220x110">DL · 220 × 110 mm</option></select></div>
+      <div class="env-stage" id="single-env-stage"></div>
+    </div>
+    <div class="overlay-foot"><div><button type="button" class="btn btn-primary btn-sm" id="single-env-print">预览并打印</button></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="ledger-overlay" hidden>
+  <div class="overlay-mask" data-close="ledger-overlay"></div>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="今日对账单">
+    <div class="overlay-head"><div><span class="eyebrow">今日对账单 · 九列</span><h2>厂家对账数据</h2></div><button type="button" class="btn btn-sm" data-close="ledger-overlay">关闭 ✕</button></div>
+    <div class="overlay-body"><p class="ledger-note">内容由已录入运单实时生成，不在此编辑；要改请回到列表「编辑运单」，这里会一起更新。导出范围仅九列，不含合作方成本与内部利润。</p><div class="ledger-table" id="ledger-table"></div></div>
+    <div class="overlay-foot"><span class="hint" id="ledger-count">—</span><div><button type="button" class="btn btn-sm" id="ledger-price">登记运费</button><button type="button" class="btn btn-sm" id="ledger-print">打印</button><button type="button" class="btn btn-primary btn-sm" id="ledger-export">导出 CSV</button></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="word-overlay" hidden>
+  <div class="overlay-mask" data-close="word-overlay"></div>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="发车清单（按车辆）">
+    <div class="overlay-head"><div><span class="eyebrow">发车清单 · 一车一张</span><h2>按开单日期与合作方（车）</h2></div><button type="button" class="btn btn-sm" data-close="word-overlay">关闭 ✕</button></div>
+    <div class="overlay-body"><p class="ledger-note">按开单日期与合作方（车）生成，一车一张，13 列宽表；内容随运单编辑自动更新，不单独编辑。</p><div class="word-slot" id="word-slot"></div></div>
+    <div class="overlay-foot"><div><button type="button" class="btn btn-sm" id="word-print">导出本车 .xlsx</button></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="month-overlay" hidden>
+  <div class="overlay-mask" data-close="month-overlay"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="月账">
+    <div class="overlay-head"><div><span class="eyebrow">月账 · 日结后才汇入</span><h2>月度对账汇总</h2></div><button type="button" class="btn btn-sm" data-close="month-overlay">关闭 ✕</button></div>
+    <div class="overlay-body"><p class="ledger-note">每日结束后点「日结」，当日对账单才汇入月账；汇入前改动仍走编辑运单。</p><div id="month-list" class="month-list"></div></div>
+    <div class="overlay-foot"><span class="hint" id="month-count">—</span><div><button type="button" class="btn btn-primary btn-sm" id="month-settle">日结 · 汇入今日</button></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="message-overlay" hidden>
+  <div class="overlay-mask" data-close="message-overlay"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="发运消息处理结果">
+    <div class="overlay-head"><div><span class="eyebrow">发运消息 · 处理结果</span><h2>这条消息做了什么</h2></div><button type="button" class="btn btn-sm" data-close="message-overlay">关闭 ✕</button></div>
+    <div class="overlay-body" id="message-body"></div>
+    <div class="overlay-foot"><div><button type="button" class="btn btn-primary btn-sm" id="message-word">查看发车清单</button></div></div>
+  </div>
+</div>
+
+<div class="overlay" id="ops-overlay" hidden>
+  <div class="overlay-mask" id="ops-mask"></div>
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="费用与回单">
+    <div class="overlay-head"><div><span class="eyebrow">货出门以后 · 钱和纸</span><h2>业务台账</h2></div><button type="button" class="btn btn-sm" id="ops-close">关闭 ✕</button></div>
+    <div class="ops-tabs" id="ops-tabs">
+      <button type="button" data-tab="fees">费用与凭证</button>
+      <button type="button" data-tab="bill">合作方账单核对</button>
+      <button type="button" data-tab="receipt">回单与原件</button>
+      <button type="button" data-tab="deliver">交付厂家</button>
+    </div>
+    <div class="overlay-body"><div class="ops-pane" id="ops-pane"></div></div>
+    <div class="overlay-foot"><span class="hint" id="ops-due"></span></div>
+  </div>
+</div>
+
+
+
+<div class="envelope-backdrop" id="envelope-dialog" role="dialog" aria-modal="true" aria-labelledby="env-dialog-title" hidden>
+  <div class="envelope-dialog">
+    <div class="env-dialog-head"><div><div class="eyebrow">RETURN RECEIPT ENVELOPE / 回执袋</div><h2 id="env-dialog-title">打印回执袋封面</h2><p>选择运单、校对封面，一票一张；收货方签收的是袋内厂家回执。</p></div><button type="button" class="secondary" id="close-envelope" aria-label="关闭封面打印">关闭 ✕</button></div>
+    <div class="envelope-content">
+      <div class="envelope-picker">
+        <div class="env-setting"><label for="env-date">发货日期</label><input id="env-date" type="date"></div>
+        <div class="env-setting"><label for="env-size">信封尺寸</label><select id="env-size"><option value="229x162">C5 · 229 × 162 mm</option><option value="250x176">B5 · 250 × 176 mm</option><option value="324x229">C4 · 324 × 229 mm</option><option value="220x110">DL · 220 × 110 mm</option><option value="custom">自定义尺寸</option></select></div>
+        <div class="env-custom" id="env-custom" hidden><div class="env-setting"><label for="env-width">宽度（毫米）</label><input id="env-width" type="number" min="150" max="400" step="1" value="229"></div><div class="env-setting"><label for="env-height">高度（毫米）</label><input id="env-height" type="number" min="100" max="300" step="1" value="162"></div></div>
+        <div class="env-list-title"><strong>选择要打印的运单</strong><span id="env-picked-count">已选 0 票</span></div>
+        <div id="env-waybill-list" class="env-waybill-list"><div class="empty">暂无可打印运单</div></div>
+        <div class="env-pick-actions"><button class="secondary" type="button" id="env-all">全选当天</button><button class="secondary" type="button" id="env-none">清空选择</button></div>
+      </div>
+      <div class="envelope-preview-pane"><div class="env-preview-title"><strong>信封正面预览</strong><span id="env-preview-label">等待选择运单</span></div><div class="env-preview-stage" id="env-preview-stage"><div class="empty">请选择左侧运单预览封面。</div></div><p class="env-print-tip">按实际信封尺寸设置打印机纸张；建议选择原始尺寸／100% 比例，先用普通纸试印核对边距与进纸方向。封面不打印厂家运费及内部合作方成本。</p></div>
+    </div>
+    <div class="env-dialog-foot"><span id="env-print-state">厂家回执由原流程提供，本功能只打印装回执的信封正面。</span><button class="primary" type="button" id="env-print">打印选中信封</button></div>
+  </div>
+</div>
+<div id="print-root" aria-hidden="true"></div>
+<style id="env-page-style"></style>
+<div id="toast" class="toast" role="status"></div>
+<script>
+(function(){
+'use strict';
+const K='julong_demo_waybills_v2',H='julong_demo_recipients_v2',D='julong_demo_dispatch_v5';
+const $=id=>document.getElementById(id);
+let docs=[],people=[],assignments=[],matches=[],active=-1,selectedGroup="";
+function load(k){try{const v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
+docs=load(K);people=load(H);assignments=load(D);
+function saveLocal(){try{localStorage.setItem(K,JSON.stringify(docs));localStorage.setItem(H,JSON.stringify(people));localStorage.setItem(D,JSON.stringify(assignments));return true}catch(e){notify('当前浏览器禁止本地保存，请换浏览器打开');return false}}
+function today(){let d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
+$('date').value=today();$('dispatch-date').value=today();$('date').addEventListener('change',()=>drawList());
+function notify(msg){let x=$('toast');x.textContent=msg;x.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>x.classList.remove('show'),2600)}
+function error(msg){$('error').textContent=msg;$('error').classList.add('show')}
+function clearError(){$('error').classList.remove('show')}
+const v=id=>$(id).value.trim();
+const numberValue=n=>{let k=Number(n);return Number.isFinite(k)?k:0};
+function money(n){return (Math.round(n*100)/100).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}
+
+function addHist(p){if(!p.receiver||!p.phone||!p.address)return;let k=[p.receiver,p.phone,p.address].join('|').toLowerCase();const idx=people.findIndex(x=>[x.receiver,x.phone,x.address].join('|').toLowerCase()===k);if(idx!==-1)people.splice(idx,1);people.unshift({receiver:p.receiver,phone:p.phone,address:p.address,destination:p.destination||'',last:new Date().toISOString()});people=people.slice(0,2000)}
+function drawList(){let stamp=v('date')||today();const todays=docs.filter(x=>x.date===stamp),weight=todays.reduce((a,x)=>a+Number(x.weight),0);
+$('day-label').textContent=stamp;$('count').textContent=todays.length;$('total-weight').textContent=weight.toFixed(2);$('all-count').textContent=`共${docs.length}票`;
+$('sync-state').textContent=docs.length?`${docs.length}票已在本地建档，厂家九列导出可用`:'录单保存后自动更新';
+let node=$('records');node.textContent='';if(!docs.length){let e=document.createElement('div');e.className='empty';e.textContent='当前没有运单。左侧录入保存后，这里自动出现。';node.appendChild(e);return}
+for(let x of docs.slice().reverse().slice(0,8)){let r=document.createElement('div');r.className='rec';const a=document.createElement('b'),b=document.createElement('span'),c=document.createElement('small');a.textContent=x.number;b.textContent=x.destination+' · '+x.receiver;c.textContent=Number(x.weight).toFixed(2)+'吨';r.append(a,b,c);node.appendChild(r)}
+}
+function fill(p){['receiver','phone','address'].forEach(k=>$(k).value=p[k]||'');if(!v('destination')&&p.destination)$('destination').value=p.destination;hide();$('phone').focus();notify('已带出收货人、电话和地址')}
+function hide(){$('suggestions').hidden=true;$('receiver').setAttribute('aria-expanded','false');active=-1}
+function renderSuggestions(){let q=v('receiver').toLowerCase(),node=$('suggestions');matches=q?people.filter(p=>[p.receiver,p.phone,p.address,p.destination].some(s=>(s||'').toLowerCase().includes(q))).slice(0,7):[];node.textContent='';active=-1;
+if(!matches.length){hide();return}matches.forEach((p,i)=>{let b=document.createElement('button');b.type='button';let s=document.createElement('strong');s.textContent=p.receiver+' · '+p.phone;let d=document.createElement('small');d.textContent=p.address;b.append(s,d);b.addEventListener('mousedown',e=>e.preventDefault());b.addEventListener('click',()=>fill(p));node.appendChild(b)});node.hidden=false;$('receiver').setAttribute('aria-expanded','true')}
+$('receiver').addEventListener('input',renderSuggestions);
+$('receiver').addEventListener('keydown',e=>{if($('suggestions').hidden)return;const btns=[...$('suggestions').querySelectorAll('button')];if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();active=(active+(e.key==='ArrowDown'?1:-1)+btns.length)%btns.length;btns.forEach((b,i)=>b.classList.toggle('active',i===active))}if(e.key==='Enter'&&active>=0){e.preventDefault();fill(matches[active])}if(e.key==='Escape'){hide()}});
+$('receiver').addEventListener('blur',()=>setTimeout(hide,150));
+$('waybill-form').addEventListener('submit',e=>{e.preventDefault();clearError();let item={number:v('number'),date:v('date'),receiver:v('receiver'),phone:v('phone'),address:v('address'),destination:v('destination'),cargo:v('cargo'),qty:v('qty'),weight:Number(v('weight')),remark:v('remark'),created:new Date().toISOString()};
+let needed=['number','date','receiver','phone','address','destination','cargo','qty'];for(let f of needed){if(!item[f]){error('请先填写：'+({number:'合同编号',date:'发货日期',receiver:'收货人',phone:'联系电话',address:'收货地址',destination:'到站',cargo:'货物名称',qty:'件数'})[f]);$(f).focus();return}}
+if(!(item.weight>0)){error('请检查重量');$('weight').focus();return}
+if(docs.some(x=>x.number===item.number)){error(`编号 ${item.number} 已有记录。请核对原件，系统不会覆盖已有单据。`);$('number').focus();return}
+docs.push(item);addHist(item);if(!saveLocal())return;
+let date=item.date;$('waybill-form').reset();$('date').value=date;hide();drawList();showLatest();renderDispatch();$('number').focus();notify(`运单 ${item.number} 已保存；已自动更新最近运单预览`);
+});
+
+const factoryCols=['到站','货物名称','数量','重量','运费','进仓费','单号','发货日期','备注'];
+const output=$('output-panel');
+function element(tag,cls,txt){const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=txt;return n}
+function showLatest(){
+ output.textContent='';$('output-state').textContent='本票完整信息';
+ if(!docs.length){output.appendChild(element('div','output-note','当前没有已保存的运单。'));return}
+ const x=docs[docs.length-1];
+ const h=element('div','output-head');h.append(element('b','',`运单 ${x.number}`),element('span','',`${x.date} · 已保存`));output.appendChild(h);
+ const c=element('div','output-content'),g=element('div','output-grid');
+ const fields=[['运单编号',x.number],['发货日期',x.date],['到站',x.destination],['货物名称',x.cargo],['件数',x.qty],['重量（吨）',String(x.weight)],['收货人',x.receiver],['收货电话',x.phone],['完整收货地址',x.address,true],['备注',x.remark||'无',true]];
+ for(const [label,val,wide] of fields){let cell=element('div','output-cell'+(wide?' wide':''));cell.append(element('small','',label),element('div','',val));g.appendChild(cell)}
+ c.appendChild(g);const hint=element('div','small-note muted-warn','下方发运留档区域可预览和下载发车清单；分组按运单上的承运方与发货日期汇总，一车一张。');c.appendChild(hint);output.appendChild(c);
+}
+function reconciliationData(){
+ const x=new XMLHttpRequest();x.open('GET','/api/reconciliation/waybills',false);x.send();
+ if(x.status!==200)throw new Error('内部对账仅限财务账号，或读取失败');
+ const data=JSON.parse(x.responseText), values=new Map(data.items.map(d=>[String(d.number),d]));
+ const rows=docs.map(d=>{const finance=values.get(String(d.number))||{};return {...d,amount:finance.amount??finance.freightTotal,feeWarehouse:finance.feeWarehouse,feeWarehouseIncomplete:finance.feeWarehouseIncomplete}});
+ return {rev:data.rev,rows};
+}
+function reconciledRows(){const rows=reconciliationData().rows;if(rows.some(d=>d.amount===undefined||d.amount===null||d.amount===''))throw new Error('有运单尚未登记厂家运费，请先在内部对账中登记');if(rows.some(d=>d.feeWarehouseIncomplete))throw new Error('已确认进仓费金额不完整，请先核对');return rows}
+async function setReconciliationAmount(){
+ try {const data=reconciliationData();const number=prompt('输入需要登记运费的运单编号');if(!number)return;
+ if(!data.rows.some(d=>String(d.number)===number.trim()))throw new Error('未找到运单');
+ const amount=prompt('输入厂家运费（元）');if(amount===null)return;if(amount.trim()===''||!Number.isFinite(Number(amount))||Number(amount)<0)throw new Error('请输入有效金额');
+ const response=await fetch('/api/reconciliation/waybills',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-JL-Client':'1','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({number:number.trim(),amount:amount.trim(),base_rev:data.rev})});
+ if(!response.ok)throw new Error('登记失败，请刷新后重试');location.reload();
+ }catch(e){notify(e.message)}
+}
+function showFactory(){
+ output.textContent='';$('output-state').textContent=`厂家九列 · ${docs.length}票`;
+ if(!docs.length){output.appendChild(element('div','output-note','当前没有运单可预览。请先保存一票。'));return}
+ const h=element('div','output-head');h.append(element('b','','厂家对账预览（九列）'),element('span','','不包含中转方及内部成本'));output.appendChild(h);
+ const scroll=element('div','preview-scroll'),table=element('table','preview-table'),thead=element('thead'),tr=element('tr');
+ for(const v of factoryCols)tr.appendChild(element('th','',v));thead.appendChild(tr);table.appendChild(thead);
+ let rows;try{rows=reconciledRows()}catch(e){output.appendChild(element('div','output-note',e.message));return}
+ const tbody=element('tbody');for(const x of rows.slice().sort((a,b)=>a.date.localeCompare(b.date))){const row=element('tr');for(const c of [x.destination,x.cargo,x.qty,String(x.weight||'').includes('吨')?x.weight:x.weight+'吨',money(x.amount),(x.feeWarehouse||''),x.number,x.date,x.remark||''])row.appendChild(element('td','',c));tbody.appendChild(row)}
+ table.appendChild(tbody);scroll.appendChild(table);output.appendChild(scroll);
+ const note=element('div','output-note','按 2026-11-12 格式标准出表：A4 纵向、九列、宋体 11pt、表头行高 28；单号为文本保留前导零，发货日期为真日期。导出按发货月份分文件。');output.appendChild(note);
+}
+$('show-latest').addEventListener('click',()=>{showLatest();$('output-panel').scrollIntoView({behavior:'smooth',block:'nearest'})});
+$('preview-csv').addEventListener('click',()=>{showFactory();$('output-panel').scrollIntoView({behavior:'smooth',block:'nearest'})});
+$('seed').addEventListener('click',()=>{notify('实测版不提供模拟收货资料')});
+$('clear').addEventListener('click',()=>{if(!confirm('清空全部运单和收货资料？所有业务员都会看到结果，此操作不可撤销。'))return;docs=[];people=[];assignments=[];selectedGroup='';saveLocal();$('waybill-form').reset();$('date').value=today();drawList();showLatest();renderDispatch();clearError();notify('运单与收货资料已清空')});
+$('export').addEventListener('click',async()=>{
+ if(!docs.length){notify('当前没有运单可以导出');return}
+ showFactory();
+ let rows;try{rows=reconciledRows()}catch(e){notify(e.message);return}
+ const groups=billGroups(rows);
+ if(!groups.length){notify('运单缺少发货日期，无法按月出账');return}
+ if(groups.length===1){
+  const g=groups[0];
+  downloadBlob(new Blob([makeBillXlsx(g.docs)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),billName(g.docs,g.key));
+  notify(`已导出 ${g.docs.length} 票（${g.key}）对账单，运费合计 ${money(g.docs.reduce((n,d)=>n+Number(d.amount||0),0))} 元`);
+  return;
+ }
+ const items=[];
+ for(const g of groups){const zip=makeBillXlsx(g.docs);items.push([billName(g.docs,g.key),new Uint8Array(await zip.arrayBuffer())])}
+ downloadBlob(makeZip(items),'巨龙_厂家对账_按月份.zip');
+ const grand=groups.reduce((n,g)=>n+g.docs.reduce((m,d)=>m+Number(d.amount||0),0),0);
+ const cnt=groups.reduce((n,g)=>n+g.docs.length,0);
+ notify(`已按 ${groups.length} 个月份分别导出，共 ${cnt} 票，运费合计 ${money(grand)} 元`);
+});
+
+// V5: The dispatch adapter below is intentionally a mock source: a future official
+// conversation archive connector may produce the same {date, partner, numbers} data.
+function groupKey(a){return a.date+'|'+a.partner}
+function dispatchGroups(){const map=new Map();for(const a of assignments){const x=docs.find(d=>d.number===a.number);if(!x)continue;let k=groupKey(a);if(!map.has(k))map.set(k,{key:k,date:a.date,partner:a.partner,docs:[]});map.get(k).docs.push(x)}return [...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.partner.localeCompare(b.partner))}
+function renderDispatch(){
+ const groups=dispatchGroups(), assigned=new Set(assignments.map(a=>a.number));
+ const orphan=docs.filter(d=>!assigned.has(d.number));
+ $('dispatch-status').textContent=groups.length?`已按承运方归档 ${assignments.length} 票，形成 ${groups.length} 份留档；未归档 ${orphan.length} 票${orphan.length?'（不自动猜测）':''}`:`尚无分组；未归档 ${orphan.length} 票。`;
+ $('word-dot').classList.toggle('dim',!groups.length);$('word-state').textContent=groups.length?`${groups.length} 份按发运日期与合作方汇总的留档可以预览并下载`:'录入运单并填好承运方后自动生成';
+ const root=$('word-wrap');root.replaceChildren();
+ if(!groups.length){root.appendChild(element('div','word-empty','还没有生成发车清单：先录入运单，并在运单上填好承运 / 中转方与发货日期，系统会按日期和合作方自动分组。'));return}
+ if(!groups.some(g=>g.key===selectedGroup))selectedGroup=groups[0].key;
+ const tabs=element('div','group-selector');
+ for(const g of groups){const btn=element('button',g.key===selectedGroup?'active':'',`${g.date.slice(5)} · ${g.partner} (${g.docs.length})`);btn.type='button';btn.addEventListener('click',()=>{selectedGroup=g.key;renderDispatch()});tabs.appendChild(btn)}root.appendChild(tabs);
+ const g=groups.find(g=>g.key===selectedGroup);
+ const tonnes=g.docs.reduce((n,d)=>n+Number(d.weight||0),0);
+ root.appendChild(element('div','word-meta',`${g.partner} · 开单日期 ${g.date} · ${g.docs.length} 票 · ${tonnes.toFixed(2)} 吨 · A4 横向 13 列 · 打印 75%`));
+ const paper=element('div','word-paper'),sheet=element('div','word-sheet');
+ const table=element('table','word-table');
+ const cg=element('colgroup');
+ const totalW=FCL_WIDTHS.reduce((n,w)=>n+w*7+5,0);
+ for(const w of FCL_WIDTHS){const col=element('col');col.style.width=((w*7+5)/totalW*100).toFixed(2)+'%';cg.appendChild(col)}
+ table.appendChild(cg);
+ const mkRow=(cells)=>{const tr=element('tr');for(const c of cells)tr.appendChild(element('td',c[1]||'',c[0]));return tr};
+ const titleTr=element('tr'),titleTd=element('td','titlebar',FCL_TITLE);titleTd.setAttribute('colspan','13');titleTr.appendChild(titleTd);table.appendChild(titleTr);
+ table.appendChild(mkRow(FCL_COLS.map((c,i)=>[i===9?`司机 ${g.partner}`:(i===10?(g.driverPhone||''):''),i===0?'lb':(i===12?'rb':(i===9?'nb l':'nb'))])));
+ table.appendChild(mkRow(FCL_COLS.map(c=>[c[0],''])));
+ for(const d of g.docs)table.appendChild(mkRow(FCL_COLS.map(c=>[fclValue(d,c[1]),c[1]==='address'?'l':''])));
+ table.appendChild(mkRow(FCL_COLS.map(()=>['',''])));
+ table.appendChild(mkRow(FCL_COLS.map((c,i)=>[i===10?fclStamp(g.date):(i===12?FCL_NOTE.replace(/ /g,'\u00a0'):''),i===12?'l':''])));
+ sheet.appendChild(table);paper.appendChild(sheet);root.appendChild(paper);
+ const actions=element('div','word-download');let button=element('button','primary smallprimary','下载本车发车清单（.xlsx）');button.type='button';button.addEventListener('click',()=>downloadWord(g));actions.appendChild(button);
+ const all=element('button','secondary','下载全部车辆（ZIP）');all.type='button';all.addEventListener('click',()=>downloadAllWord());actions.appendChild(all);root.appendChild(actions);
+ root.appendChild(element('div','word-hint','版式按 2026-11-12 标准（26.10.30孙立伟车发车清单）：A4 横向、打印缩放 75%、13 列、微软雅黑 10pt、每行 27pt、1pt 实线框。运单号保留前导零；「回付　　元」按实收手填，不打印厂家运费。'));
+}
+function parseNumbers(s){return [...new Set(s.split(/[\s,，、;；]+/).map(x=>x.trim()).filter(Boolean))]}
+function applyDispatch(date,partner,nums){
+ const missing=nums.filter(n=>!docs.some(x=>x.number===n));if(!nums.length)return '请填写至少一个运单编号';if(missing.length)return `未找到运单：${missing.join('、')}。已阻止整组提交，避免错配。`;
+ // One active allocation per waybill. Repeated messages should be idempotent.
+ for(const n of nums){const old=assignments.find(a=>a.number===n);if(old){if(old.partner!==partner||old.date!==date)return `运单 ${n} 已属于 ${old.date} / ${old.partner}，请先核实，避免重复分配。`}}
+ for(const n of nums)if(!assignments.find(a=>a.number===n))assignments.push({number:n,date,partner});
+ selectedGroup=date+'|'+partner;saveLocal();renderDispatch();return '';
+}
+$('mock-receive').addEventListener('click',()=>{let date=$('dispatch-date').value, partner=$('dispatch-partner').value, nums=parseNumbers($('dispatch-ids').value);if(!date){notify('缺少发运日期');return}const problem=applyDispatch(date,partner,nums);if(problem){const t=$('dispatch-status');t.textContent=problem;t.classList.add('msg-error');return} $('dispatch-status').classList.remove('msg-error');$('dispatch-ids').value='';notify('已模拟接收调度信息，发车清单自动更新')});
+$('demo-complete').addEventListener('click',()=>{notify('实测版不加载示例运单，请直接录入真实单据')});
+function xmlEscape(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;')}
+/* ============ 发车清单 .xlsx（2026-11-12 格式标准之二：26.10.30孙立伟车发车清单.xls）
+   A4 横向 / 打印缩放 75% / 13 列固定列序 / 微软雅黑 10pt 加粗 / 每行 27pt /
+   标题合并居中 11pt / 司机与电话写在右侧空白区 / 全表 1pt 实线框 */
+const FCL_COLS=[['运单号','number'],['开单日期','date'],['发站','origin'],['到站','destination'],['收货人','receiver'],['品名','cargo'],['件数','qty'],['重量','weight'],['回付方式','payMode'],['付货方式','deliveryMode'],['收货电话','phone'],['备注','remark'],['收货地址','address']];
+const FCL_WIDTHS=[12.63,9.8,8.13,9,9.88,8.13,11,10.5,8.38,11.75,18,15.13,51.25];
+const FCL_TITLE='鞍山巨龙物流发货清单';
+const FCL_ORIGIN='鞍山';
+const FCL_NOTE='回付        元';
+function fclDay(iso){const m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(iso||''));return m?`${Number(m[2])}.${m[3]}`:String(iso||'')}
+function fclStamp(iso){const m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(iso||''));return m?`${m[1].slice(2)}/${m[2]}/${m[3]}日`:String(iso||'')}
+function fclWeight(v){const t=String(v??'').trim();if(!t)return '';return t.includes('吨')?t:t+'吨'}
+function fclValue(d,k){
+ if(k==='date')return fclDay(d.date);
+ if(k==='origin')return FCL_ORIGIN;
+ if(k==='weight')return fclWeight(d.weight);
+ if(k==='payMode')return d.payMode||'回 执';
+ if(k==='deliveryMode')return d.deliveryMode||'送';
+ if(k==='address')return d.address||'';
+ if(k==='remark')return d.remark||'';
+ return String(d[k]??'');
+}
+/* 样式索引：1=框内居中 2=框内左对齐（地址） 3=标题 4=框左边 5=框右边 6=无框左对齐 7=无框居中 */
+const fclStyles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="10"/><color theme="1"/><name val="微软雅黑"/><charset val="134"/><b/></font><font><sz val="11"/><color theme="1"/><name val="微软雅黑"/><charset val="134"/><b/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="5"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right/><top/><bottom/><diagonal/></border><border><left/><right style="thin"><color auto="1"/></right><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="8"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="3" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="4" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="常规" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0"/></styleSheet>`;
+const fclWorkbook=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="发车清单" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+function fclCell(ref,val,st){return `<c r="${ref}" s="${st}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(val)}</t></is></c>`}
+function buildFclSheet(g){
+ const L='ABCDEFGHIJKLM'.split(''),rows=[];
+ rows.push(`<row r="1" ht="27" customHeight="1">${L.map(c=>fclCell(c+'1',c==='A'?FCL_TITLE:'',3)).join('')}</row>`);
+ rows.push(`<row r="2" ht="27" customHeight="1">${L.map((c,i)=>{
+  const st=i===0?4:(i===9?6:(i===12?5:7));
+  const v=i===9?`司机 ${g.partner}`:(i===10?(g.driverPhone||''):'');
+  return fclCell(c+'2',v,st)}).join('')}</row>`);
+ rows.push(`<row r="3" ht="27" customHeight="1">${FCL_COLS.map((c,i)=>fclCell(L[i]+'3',c[0],1)).join('')}</row>`);
+ g.docs.forEach((d,idx)=>{const r=4+idx;
+  rows.push(`<row r="${r}" ht="27" customHeight="1">`+FCL_COLS.map((c,ci)=>fclCell(L[ci]+r,fclValue(d,c[1]),c[1]==='address'?2:1)).join('')+'</row>')});
+ let r=4+g.docs.length;
+ rows.push(`<row r="${r}" ht="27" customHeight="1">${L.map(c=>fclCell(c+r,'',1)).join('')}</row>`);r++;
+ rows.push(`<row r="${r}" ht="27" customHeight="1">${L.map((c,i)=>fclCell(c+r,i===10?fclStamp(g.date):(i===12?FCL_NOTE:''),i===12?2:1)).join('')}</row>`);
+ return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:M${r}"/><sheetViews><sheetView tabSelected="1" zoomScale="100" zoomScaleNormal="100" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="27" customHeight="1"/><cols>${FCL_WIDTHS.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows.join('')}</sheetData><mergeCells count="1"><mergeCell ref="A1:M1"/></mergeCells><pageMargins left="0.51" right="0.25" top="0.94" bottom="0.75" header="0.43" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" scale="75"/></worksheet>`
+}
+function makeFclXlsx(g){return makeZip([['[Content_Types].xml',xlTypes],['_rels/.rels',xlRels],['xl/workbook.xml',fclWorkbook],['xl/_rels/workbook.xml.rels',xlWorkbookRels],['xl/styles.xml',fclStyles],['xl/worksheets/sheet1.xml',buildFclSheet(g)]])}
+function fclName(g){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(g.date||''));const stamp=m?`${m[1].slice(2)}.${m[2]}.${m[3]}`:String(g.date||'');
+ return `${stamp}${cleanName(g.partner)}车发车清单.xlsx`}
+
+/* ============ 厂家对账单 .xlsx（2026-11-12 格式标准） ============
+   标准：A4 纵向 / 九列固定列序 / 宋体 11pt 不加粗 / 表头行高 28 /
+        单号为文本 7 位前导零 / 发货日期为真日期（numFmt 14）/
+        进仓费无则留空 / 数据后补空行至 125 行、B 列预填「染料」 */
+const billCols=['到站','货物名称','数量','重量','运费','进仓费','单号','发货日期','备注'];
+const billWidths=[[1,2,9],[3,3,11.4],[4,7,9],[8,8,11.5],[9,9,9]];
+function excelSerial(iso){const m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(iso||''));if(!m)return null;const d=Date.UTC(+m[1],+m[2]-1,+m[3]);return Math.round((d-Date.UTC(1899,11,30))/86400000)}
+function xlStr(ref,text,style){return `<c r="${ref}" t="inlineStr" s="${style}"><is><t xml:space="preserve">${xmlEscape(text==null?'':text)}</t></is></c>`}
+function xlNum(ref,v,style){const n=Number(v);return Number.isFinite(n)?`<c r="${ref}" s="${style}"><v>${n}</v></c>`:xlStr(ref,v,style)}
+function xlDate(ref,iso,style){const n=excelSerial(iso);return n==null?xlStr(ref,iso,style):`<c r="${ref}" s="${style}"><v>${n}</v></c>`}
+const xlStyles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0"/><numFmt numFmtId="165" formatCode="yyyy-mm-dd"/></numFmts><fonts count="1"><font><sz val="11"/><color theme="1"/><name val="宋体"/><charset val="134"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="4"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="medium"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal/></border><border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right><top style="thin"><color auto="1"/></top><bottom style="medium"><color auto="1"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="49" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="3" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="常规" xfId="0" builtinId="0"/></cellStyles><dxfs count="0"/><tableStyles count="0"/></styleSheet>`;
+const BILL_LAST_ROW=130; // 原件带边框的最后一行（表头1 + 数据与空格共129行）
+const BILL_DYE_ROW=125;  // 原件 B 列「染料」预填到第 125 行，126 起只有框、不预填
+/* 样式索引：1=细框居中 2=日期 3=文本 4=表头（上下粗线） 5=收口（下粗线） 6=金额千分位 */
+function buildSheetXML(list){
+ const first=list[0]||{},ym=(()=>{const m=/^(\d{4})-(\d{1,2})/.exec(String(first.date||''));return m?`${m[1]}年${Number(m[2])}月`:''})();
+ const sheetTitle=ym?`${ym} 厂家对账单`:'厂家对账单';
+ const lastRow=Math.max(BILL_LAST_ROW,list.length+1),rows=[];
+ const blank=(ref,st)=>`<c r="${ref}" s="${st||1}"/>`;
+ rows.push(`<row r="1" ht="28" customHeight="1">${billCols.map((v,i)=>xlStr(String.fromCharCode(65+i)+'1',v,4)).join('')}</row>`);
+ list.forEach((x,i)=>{const r=i+2;
+  const fw=String(x.feeWarehouse??'').trim();
+  const rm=String(x.remark??'').trim();
+  const isLast=r===lastRow;
+  const st=isLast?5:1;
+  rows.push(`<row r="${r}" customHeight="1">`+
+   xlStr('A'+r,x.destination,st)+xlStr('B'+r,x.cargo,st)+xlStr('C'+r,x.qty,st)+
+   xlStr('D'+r,String(x.weight||'').includes('吨')?x.weight:x.weight+'吨',st)+
+   xlNum('E'+r,x.amount,isLast?5:6)+(fw?xlNum('F'+r,fw,isLast?5:6):blank('F'+r,st))+
+   xlStr('G'+r,x.number,isLast?5:3)+xlDate('H'+r,x.date,isLast?5:2)+
+   (rm?xlStr('I'+r,rm,st):blank('I'+r,st))+'</row>');
+ });
+ for(let r=list.length+2;r<=lastRow;r++){
+  const st=r===lastRow?5:1;
+  const tail=['C','D','E','F','G','H','I'].map(c=>blank(c+r,st)).join('');
+  const b=r<=BILL_DYE_ROW?xlStr('B'+r,'染料',st):blank('B'+r,st);
+  rows.push(`<row r="${r}" customHeight="1">${blank('A'+r,st)}${b}${tail}</row>`);
+ }
+ return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:I${lastRow}"/><sheetViews><sheetView tabSelected="1" zoomScale="115" zoomScaleNormal="115" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A2" sqref="A2"/></sheetView></sheetViews><sheetFormatPr defaultColWidth="9" defaultRowHeight="18" customHeight="1"/><cols>${billWidths.map(([a,b,w])=>`<col min="${a}" max="${b}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${rows.join('')}</sheetData><printOptions horizontalCentered="1"/><pageMargins left="0.6" right="0.6" top="0.85" bottom="0.85" header="0.3" footer="0.35"/><pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/><headerFooter><oddHeader>&amp;L&amp;"宋体,常规"&amp;10 鞍山巨龙运输公司&amp;R&amp;"宋体,常规"&amp;10 ${sheetTitle}</oddHeader><oddFooter>&amp;C&amp;"宋体,常规"&amp;9第 &amp;P 页 / 共 &amp;N 页</oddFooter></headerFooter></worksheet>`
+}
+const xlTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+const xlRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
+const xlWorkbook=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets><definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">Sheet1!$1:$1</definedName></definedNames></workbook>`;
+const xlWorkbookRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+function makeBillXlsx(list){return makeZip([['[Content_Types].xml',xlTypes],['_rels/.rels',xlRels],['xl/workbook.xml',xlWorkbook],['xl/_rels/workbook.xml.rels',xlWorkbookRels],['xl/styles.xml',xlStyles],['xl/worksheets/sheet1.xml',buildSheetXML(list)]])}
+function billCity(list){const hit={};for(const x of list){const m=/([\u4e00-\u9fa5]{2,4}市)/.exec(x.address||'');if(m)hit[m[1]]=(hit[m[1]]||0)+1}const best=Object.entries(hit).sort((a,b)=>b[1]-a[1])[0];return best?best[0].replace(/市$/,''):''}
+function billName(list,key){const [y,m]=key.split('-');return `巨龙${y.slice(2)}年${Number(m)}月${billCity(list)}对账单.xlsx`}
+function billGroups(rows){const map=new Map();for(const x of rows.slice()){const k=String(x.date||'').slice(0,7);if(!k)continue;if(!map.has(k))map.set(k,[]);map.get(k).push(x)}return [...map.entries()].sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v])=>({key:k,docs:v.sort((a,b)=>a.number.localeCompare(b.number,'zh-CN',{numeric:true}))}))}
+// Tiny synchronous ZIP STORE writer, fully self-contained (no internet/CDN dependency).
+const encoder=new TextEncoder();let crcTable=null;
+function crc32(bytes){if(!crcTable){crcTable=Array.from({length:256},(_,i)=>{let c=i;for(let j=0;j<8;j++)c=(c&1)?0xedb88320^(c>>>1):c>>>1;return c>>>0})}let c=0xffffffff;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return (c^0xffffffff)>>>0}
+function makeZip(items){const locals=[],centrals=[];let offset=0;const u16=(a,n)=>{a.push(n&255,(n>>>8)&255)},u32=(a,n)=>{a.push(n&255,(n>>>8)&255,(n>>>16)&255,(n>>>24)&255)};
+ for(const [name,raw] of items){const n=encoder.encode(name),d=typeof raw==='string'?encoder.encode(raw):raw,crc=crc32(d),L=[];u32(L,0x04034b50);u16(L,20);u16(L,0x0800);u16(L,0);u16(L,0);u16(L,0);u32(L,crc);u32(L,d.length);u32(L,d.length);u16(L,n.length);u16(L,0);const localHead=new Uint8Array([...L,...n]);locals.push(localHead,d);
+ const C=[];u32(C,0x02014b50);u16(C,20);u16(C,20);u16(C,0x0800);u16(C,0);u16(C,0);u16(C,0);u32(C,crc);u32(C,d.length);u32(C,d.length);u16(C,n.length);u16(C,0);u16(C,0);u16(C,0);u16(C,0);u32(C,0);u32(C,offset);centrals.push(new Uint8Array([...C,...n]));offset+=localHead.length+d.length}
+ const centralSize=centrals.reduce((s,c)=>s+c.length,0),end=[];u32(end,0x06054b50);u16(end,0);u16(end,0);u16(end,items.length);u16(end,items.length);u32(end,centralSize);u32(end,offset);u16(end,0);
+ return new Blob([...locals,...centrals,new Uint8Array(end)],{type:'application/zip'})}
+function downloadBlob(blob,name){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2500)}
+function cleanName(v){return String(v).replace(/[\\/:*?"<>|]/g,'_')}
+function docFilename(g){return fclName(g)}
+function downloadWord(g){const zip=makeFclXlsx(g);downloadBlob(new Blob([zip],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),fclName(g));notify(`已下载 ${g.partner} 车 ${g.docs.length} 票发车清单`)}
+async function downloadAllWord(){const groups=dispatchGroups();if(!groups.length)return notify('尚无分组');const items=[];for(const g of groups){const zip=makeFclXlsx(g);items.push([fclName(g),new Uint8Array(await zip.arrayBuffer())])}downloadBlob(makeZip(items),'巨龙物流_发车清单_全部车辆.zip');notify(`已下载 ${groups.length} 辆车的发车清单`)}
+
+
+// 回执信封：可由员工在“今日记录”直接批量选择，免重复填写运单信息。
+let envelopePicked=new Set(), envelopePreviewNumber='';
+const envelopeDialog=$('envelope-dialog');
+function envelopeDimensions(){const s=$('env-size').value;if(s!=='custom'){const [w,h]=s.split('x').map(Number);return {w,h}}let w=Number($('env-width').value),h=Number($('env-height').value);if(!Number.isFinite(w)||!Number.isFinite(h)||w<150||w>400||h<100||h>300)return null;return {w,h}}
+function envelopeDateDocs(){return docs.filter(x=>x.date===$('env-date').value).sort((a,b)=>a.number.localeCompare(b.number,'zh-CN',{numeric:true}))}
+function addText(parent,tag,cls,txt){let el=element(tag,cls,txt);parent.append(el);return el}
+function envDetail(parent,label,value,wide=false){let cell=element('div','env-info'+(wide?' wide':''));addText(cell,'small','',label);addText(cell,'strong','',value||'—');parent.append(cell)}
+function makeEnvelope(x,dim){
+ /* 信封按 2026-11-12 标准（信封-大字体.xls）：纯套印，无标题/无说明/无边框；
+    字段靠百分比位置落到实物信封对应处，正文字号 16pt、单号 20pt、送与日期 12pt。 */
+ const root=element('div','envelope-paper');
+ root.style.width=`${dim.w}mm`;root.style.height=`${dim.h}mm`;
+ const put=(text,top,left,pt)=>{if(text==null||text==='')return;const sp=element('div','env-f',String(text));
+  sp.style.top=top+'%';sp.style.left=left+'%';sp.style.fontSize=pt+'pt';root.appendChild(sp);return sp};
+ put(x.number,3,73,20);
+ put('送',9,50,12);
+ put(x.date||'',9,73,12);
+ put(x.address,29,26,16);
+ put(x.receiver,44,26,16);
+ put(x.phone,44,61,16);
+ put(x.cargo,51,26,16);
+ put(String(x.weight||'').includes('吨')?x.weight:x.weight+'吨',57,26,16);
+ put(x.qty,57,61,16);
+ put('回 执',57,73,16);
+ return root}
+function drawEnvelopeList(){const choices=envelopeDateDocs(),ids=new Set(choices.map(x=>x.number));for(const n of [...envelopePicked])if(!ids.has(n))envelopePicked.delete(n);
+ const list=$('env-waybill-list');list.replaceChildren();if(!choices.length)list.appendChild(element('div','empty','当天没有运单，请先录入或切换发货日期。'));
+ for(const x of choices){let label=element('label','env-item'+(x.number===envelopePreviewNumber?' active':''));let check=element('input');check.type='checkbox';check.checked=envelopePicked.has(x.number);check.setAttribute('aria-label',`选择 ${x.number}`);check.addEventListener('change',()=>{if(check.checked)envelopePicked.add(x.number);else envelopePicked.delete(x.number);envelopePreviewNumber=x.number;drawEnvelopeList()});let t=element('div','env-record');addText(t,'b','',`${x.number} · ${x.destination}`);addText(t,'small','',`${x.receiver} · ${x.cargo} · ${x.weight}吨`);label.append(check,t);label.addEventListener('click',e=>{if(e.target===check)return;envelopePreviewNumber=x.number;setTimeout(drawEnvelopePreview,0)});list.appendChild(label)}
+ $('env-picked-count').textContent=`已选 ${envelopePicked.size} 票`;drawEnvelopePreview();$('env-print').disabled=!envelopePicked.size}
+function drawEnvelopePreview(){let dim=envelopeDimensions();const stage=$('env-preview-stage');stage.replaceChildren();if(!dim){stage.appendChild(element('div','empty','请填写有效信封尺寸（宽 150–400mm，高 100–300mm）'));$('env-print').disabled=true;return}
+ const choice=envelopeDateDocs();let x=choice.find(d=>d.number===envelopePreviewNumber)||choice.find(d=>envelopePicked.has(d.number))||choice[0];if(!x){stage.appendChild(element('div','empty','选择当天的运单后显示信封封面。'));$('env-preview-label').textContent='等待选择运单';return}
+ envelopePreviewNumber=x.number;$('env-preview-label').textContent=`${x.number} · ${dim.w} × ${dim.h} mm`;
+ $('env-print').disabled=!envelopePicked.size;
+ const paper=makeEnvelope(x,dim);stage.appendChild(paper); // CSS mm: 96/25.4 px, no scaling in print; scaled preview only
+ requestAnimationFrame(()=>{if(!paper.isConnected)return;const scale=Math.min((stage.clientWidth-20)/(dim.w*96/25.4),310/(dim.h*96/25.4),1);paper.style.transform=`scale(${Math.max(.1,scale)})`;paper.style.transformOrigin='center center';paper.style.flexShrink='0';paper.style.margin=`${-dim.h*96/25.4*(1-scale)/2}px ${-dim.w*96/25.4*(1-scale)/2}px`})}
+function openEnvelope(){if(!docs.length){notify('先录入至少一票合同，再打印回执封面');return}
+ const d=v('date')||today();$('env-date').value=docs.some(x=>x.date===d)?d:docs[docs.length-1].date;const items=envelopeDateDocs();envelopePicked=new Set(items.map(x=>x.number));envelopePreviewNumber=items[0]?.number||'';envelopeDialog.hidden=false;document.body.style.overflow='hidden';drawEnvelopeList();$('close-envelope').focus()}
+function closeEnvelope(){envelopeDialog.hidden=true;document.body.style.overflow=''}
+$('open-envelope').addEventListener('click',openEnvelope);$('close-envelope').addEventListener('click',closeEnvelope);
+envelopeDialog.addEventListener('click',e=>{if(e.target===envelopeDialog)closeEnvelope()});document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!envelopeDialog.hidden)closeEnvelope()});
+$('env-date').addEventListener('change',()=>{envelopePicked=new Set(envelopeDateDocs().map(x=>x.number));envelopePreviewNumber='';drawEnvelopeList()});
+$('env-size').addEventListener('change',()=>{$('env-custom').hidden=$('env-size').value!=='custom';drawEnvelopePreview()});
+for(const id of ['env-width','env-height'])$(id).addEventListener('input',drawEnvelopePreview);
+$('env-all').addEventListener('click',()=>{envelopePicked=new Set(envelopeDateDocs().map(x=>x.number));drawEnvelopeList()});
+$('env-none').addEventListener('click',()=>{envelopePicked.clear();drawEnvelopeList()});
+$('env-print').addEventListener('click',()=>{const dim=envelopeDimensions();if(!dim)return notify('请检查信封尺寸');const toPrint=envelopeDateDocs().filter(x=>envelopePicked.has(x.number));if(!toPrint.length)return notify('请至少选择一票运单');
+ const root=$('print-root');root.replaceChildren();for(const x of toPrint){const page=element('div','envelope-print-page');page.style.width=`${dim.w}mm`;page.style.height=`${dim.h}mm`;page.appendChild(makeEnvelope(x,dim));root.appendChild(page)}
+ $('env-page-style').textContent=`@page { size: ${dim.w}mm ${dim.h}mm; margin: 0; }`;
+ $('env-print-state').textContent=`已准备 ${toPrint.length} 张信封，请在浏览器打印对话框核对纸张尺寸及缩放比例。`;
+ window.print();});
+window.addEventListener('afterprint',()=>{$('print-root').replaceChildren()});
+
+window.__JL={get docs(){return docs},get people(){return people},get assignments(){return assignments},save:saveLocal,drawList,renderDispatch,today,refresh(){drawList();renderDispatch()},builders:{billGroups,makeBillXlsx,billName,makeFclXlsx,fclName,buildFclSheet,fclValue,fclStamp,fclDay,FCL_COLS,FCL_WIDTHS,makeEnvelope}};
+drawList();renderDispatch();$('number').focus();
+})();
+</script>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const JL=()=>window.__JL;
+const MONTH='julong_demo_month_v1';
+function readMonth(){try{const v=JSON.parse(localStorage.getItem(MONTH)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
+function writeMonth(v){try{localStorage.setItem(MONTH,JSON.stringify(v))}catch(e){}}
+function el(tag,cls,txt){const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=txt;return n}
+function docs(){return JL()?JL().docs:[]}
+function today(){return JL()?JL().today():new Date().toISOString().slice(0,10)}
+function money(n){return Number(n||0).toFixed(2)}
+
+/* 承运方历史只从已保存运单和发运归属里长出来，不单独维护、不需要后台配置 */
+function cleanPartner(s){return String(s||'').replace(/（演示）$/,'').trim()}
+function rawPartners(){
+ const s=new Set();
+ for(const d of docs())if(d.carrier)s.add(d.carrier);
+ for(const a of(JL()?JL().assignments:[]))if(a.partner)s.add(a.partner);
+ return [...s];
+}
+function carrierNames(){return [...new Set(rawPartners().map(cleanPartner).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'))}
+function partnerFromMessage(raw){
+ const hit=rawPartners().find(p=>cleanPartner(p)&&raw.includes(cleanPartner(p)));
+ return hit||''; /* 实测版：认不出就留空，不猜合作方 */
+}
+/* 关键词带出历史，选中回填；新名字直接打，保存后自动进历史 */
+let cActive=-1;
+function carrierButtons(){return [...$('carrier-suggestions').querySelectorAll('button')]}
+function renderCarrierSuggestions(){
+ const box=$('carrier-suggestions'),q=$('carrier').value.trim().toLowerCase();
+ box.replaceChildren();cActive=-1;
+ if(!q){box.hidden=true;return}
+ const hits=carrierNames().filter(n=>n.toLowerCase().includes(q)).slice(0,7);
+ if(!hits.length){box.hidden=true;return}
+ for(const n of hits){
+  const b=el('button','',n);b.type='button';b.tabIndex=-1;
+  b.addEventListener('mousedown',e=>e.preventDefault());
+  b.addEventListener('click',()=>{$('carrier').value=n;box.hidden=true;$('carrier').focus()});
+  box.appendChild(b);
+ }
+ box.hidden=false;
+}
+$('carrier').addEventListener('input',renderCarrierSuggestions);
+$('carrier').addEventListener('blur',()=>setTimeout(()=>{$('carrier-suggestions').hidden=true},150));
+$('carrier').addEventListener('keydown',e=>{
+ const box=$('carrier-suggestions');if(box.hidden)return;
+ const bs=carrierButtons();
+ if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+  e.preventDefault();cActive=(cActive+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length;
+  bs.forEach((b,i)=>b.classList.toggle('active',i===cActive));
+ }else if(e.key==='Enter'&&cActive>=0){
+  e.preventDefault();$('carrier').value=bs[cActive].textContent;box.hidden=true;
+ }else if(e.key==='Escape')box.hidden=true;
+});
+/* 通用历史带出：任意输入框都能「边打边筛历史」，选中即回填，新值保存后自然进历史。
+   和承运方、收货人同一套手感；不预设选项、不做固定下拉。 */
+function uniqList(arr){return [...new Set(arr.map(s=>String(s||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'))}
+function attachHist(inputId,boxId,listFn){
+ const inp=$(inputId),box=$(boxId);
+ if(!inp||!box||inp.__jlHist)return;inp.__jlHist=true;
+ let idx=-1,hits=[];
+ const btns=()=>[...box.querySelectorAll('button')];
+ function hideBox(){box.hidden=true;inp.setAttribute('aria-expanded','false');idx=-1}
+ function render(){
+  /* 同时只留一个候选层，避免几个框一起开叠在一起 */
+  [].forEach.call(document.querySelectorAll('.suggestions'),function(b){if(b!==box)b.hidden=true});
+  const q=inp.value.trim().toLowerCase();
+  hits=(q?listFn().filter(v=>String(v).toLowerCase().includes(q)):listFn()).slice(0,7);
+  box.replaceChildren();idx=-1;
+  if(!q||!hits.length){hideBox();return}
+  hits.forEach(v=>{const b=el('button','',v);b.type='button';b.tabIndex=-1;
+   b.addEventListener('mousedown',e=>e.preventDefault());
+   b.addEventListener('click',()=>{inp.value=v;hideBox();inp.focus()});
+   box.appendChild(b)});
+  box.hidden=false;inp.setAttribute('aria-expanded','true');
+ }
+ inp.addEventListener('input',render);
+ inp.addEventListener('blur',()=>setTimeout(hideBox,150));
+ inp.addEventListener('keydown',e=>{
+  if(box.hidden)return;
+  const bs=btns();
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();idx=(idx+(e.key==='ArrowDown'?1:-1)+bs.length)%bs.length;bs.forEach((b,i)=>b.classList.toggle('active',i===idx))}
+  else if(e.key==='Enter'&&idx>=0){e.preventDefault();inp.value=bs[idx].textContent;hideBox()}
+  else if(e.key==='Enter'&&bs.length===1){e.preventDefault();inp.value=bs[0].textContent;hideBox()}
+  else if(e.key==='Escape')hideBox();
+ });
+}
+attachHist('destination','destination-suggestions',()=>uniqList(docs().map(d=>d.destination)));
+attachHist('cargo','cargo-suggestions',()=>uniqList(docs().map(d=>d.cargo)));
+attachHist('qty','qty-suggestions',()=>uniqList(docs().map(d=>d.qty)));
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>t.classList.remove('show'),2600)}
+
+/* 把原脚本渲染的容器接到浮层里，原 JS 仍然操作同一个元素 */
+if($('word-slot')&&$('word-wrap'))$('word-slot').appendChild($('word-wrap'));
+if($('ledger-table')&&$('output-panel'))$('ledger-table').appendChild($('output-panel'));
+
+function openOverlay(id){$(id).hidden=false;document.body.style.overflow='hidden'}
+function closeOverlay(id){$(id).hidden=true;if(!document.querySelector('.overlay:not([hidden])'))document.body.style.overflow=''}
+document.addEventListener('click',e=>{const t=e.target.closest('[data-close]');if(t)closeOverlay(t.getAttribute('data-close'))});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.overlay:not([hidden])').forEach(o=>closeOverlay(o.id))});
+function printOverlay(id){
+ document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('print-active'));
+ $(id).classList.add('print-active');
+ toast('已送进打印对话框，请核对纸张与缩放');
+ setTimeout(()=>window.print(),60);
+}
+window.addEventListener('afterprint',()=>document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('print-active')));
+
+/* 主界面：运单列表 */
+/* 承运方在录单时随运单确定；老数据没有该字段时，退回发运归属里认领的合作方 */
+function routeOf(num){
+ const asg=JL()?JL().assignments:[];
+ const a=asg.find(a=>a.number===num);
+ if(a)return a;
+ const d=docs().find(x=>x.number===num);
+ return d&&d.carrier?{number:num,date:d.date,partner:d.carrier}:null;
+}
+function renderList(){
+ const box=$('waybill-list');box.replaceChildren();
+ const list=docs().slice().reverse();
+ if(!list.length){box.appendChild(el('div','wb-empty','还没有运单。上方录入并保存一票，这里会多出一条。'));return}
+ for(const x of list){
+  const row=el('div','wb-row');
+  const no=el('span','wb-no',x.number),r=routeOf(x.number);
+  no.appendChild(el('small',r?'':'unassigned',r?`已排 · ${r.date.slice(5)}`:'未指定承运'));
+  row.append(no,el('span','wb-main',`${x.destination} · ${x.receiver}`),
+   el('span','wb-cargo',`${x.cargo} / ${x.qty}`),el('span','wb-num',`${Number(x.weight).toFixed(2)}t`),
+   el('span','wb-num wb-route',r?cleanPartner(r.partner):'—'));
+  const ops=el('span','wb-ops');
+  const b1=el('button','btn btn-sm','详情'),b2=el('button','btn btn-sm','信封'),b3=el('button','btn btn-sm','清单');
+  b1.type=b2.type=b3.type='button';
+  b1.addEventListener('click',e=>{e.stopPropagation();openDetail(x.number)});
+  b2.addEventListener('click',e=>{e.stopPropagation();openEnvelope(x.number)});
+  b3.addEventListener('click',e=>{e.stopPropagation();openWord()});
+  ops.append(b1,b2,b3);row.appendChild(ops);
+  row.addEventListener('click',()=>openDetail(x.number));
+  box.appendChild(row);
+ }
+}
+
+/* 运单详情：只在这里放编辑入口，产物无独立编辑、无删除 */
+let detailNumber=null,editNumber=null;
+function openDetail(num){
+ const x=docs().find(d=>d.number===num);if(!x)return;
+ detailNumber=num;$('detail-number').textContent=`运单 ${x.number}`;
+ const body=$('detail-body');body.replaceChildren();
+ const g=el('div','detail-grid');
+ const pairs=[['发货日期',x.date],['到站',x.destination],['收货人',x.receiver],['联系电话',x.phone],
+  ['完整收货地址',x.address,true],['货物名称',x.cargo],['件数',x.qty],['重量（吨）',String(x.weight)],
+  ['备注',x.remark||'无',true]];
+ for(const [k,v,wide] of pairs){const c=el('div',wide?'wide':'');c.append(el('small','',k),el('span','',String(v)));g.appendChild(c)}
+ body.appendChild(g);
+ const rt=el('div','detail-status');rt.appendChild(el('h3','','发运归属'));
+ const r=routeOf(x.number);
+ [['承运 / 中转方',r?cleanPartner(r.partner):'尚未指定'],['发运日期',r?r.date:'—'],['发车清单',r?'该票已计入对应分组':'未计入，请先指定承运方']]
+  .forEach(([a,b])=>{const q=el('div','state-row');q.append(el('span','',a),el('span','',b));rt.appendChild(q)});
+ body.appendChild(rt);
+ const st=el('div','detail-status');st.appendChild(el('h3','','签收与回单状态'));
+ st.appendChild(el('div','ops-hint','照片、纸质原件、交厂家分开记，见下方「钱和纸」台账；这里不再用「未接入」占位。'));
+ body.appendChild(st);
+ if(window.__JL_OPS)window.__JL_OPS.renderDetail(num,body);
+ openOverlay('detail-overlay');
+}
+$('detail-print').addEventListener('click',()=>printOverlay('detail-overlay'));
+
+/* 编辑运单：编号锁定，改完所有派生内容实时重算 */
+function resetEdit(){
+ editNumber=null;
+ $('number').disabled=false;
+ $('entry-title').textContent='录入一票运单';
+ $('entry-hint').textContent='';
+ $('submit-btn').textContent='保存本票，继续录入　↵';
+ $('cancel-edit').hidden=true;
+ $('form-note').textContent='';
+ $('waybill-form').reset();$('date').value=today();
+}
+$('detail-edit').addEventListener('click',()=>{
+ const x=docs().find(d=>d.number===detailNumber);if(!x)return;
+ editNumber=x.number;
+ const r=routeOf(x.number);
+ const map={number:x.number,date:x.date,receiver:x.receiver,phone:x.phone,address:x.address,
+  destination:x.destination,cargo:x.cargo,qty:x.qty,weight:x.weight,remark:x.remark||'',
+  carrier:x.carrier||(r?r.partner:'')};
+ for(const k in map)$(k).value=map[k];
+ $('number').disabled=true;
+ $('entry-title').textContent=`编辑运单 ${x.number}`;
+ $('entry-hint').textContent='';
+ $('submit-btn').textContent='保存修改';
+ $('cancel-edit').hidden=false;
+ $('form-note').textContent='';
+ closeOverlay('detail-overlay');
+ document.querySelector('.entry').scrollIntoView({behavior:'smooth',block:'start'});
+});
+$('cancel-edit').addEventListener('click',resetEdit);
+/* 承运方随运单保存：新增时在原脚本存完之后补写一次，并生成发运归属；
+   原脚本只认自己那几个字段，这里不改它。 */
+function syncAssignment(x){
+ const asg=JL().assignments,a=asg.find(a=>a.number===x.number);
+ if(a){a.partner=x.carrier;a.date=x.date}
+ else asg.push({number:x.number,date:x.date,partner:x.carrier});
+}
+document.addEventListener('submit',e=>{
+ if(e.target.id!=='waybill-form')return;
+ if(!editNumber){
+  const carrier=$('carrier').value.trim(),num=$('number').value.trim(),len=docs().length;
+  setTimeout(()=>{
+   if(carrier&&docs().length>len){
+    const x=docs().find(y=>y.number===num);
+    if(x){x.carrier=carrier;syncAssignment(x);JL().save();JL().renderDispatch()}
+   }
+   renderList();refreshMockHint();
+  },0);
+  return
+ }
+ e.preventDefault();e.stopPropagation();
+ const x=docs().find(d=>d.number===editNumber);if(!x){resetEdit();return}
+ const v=k=>$(k).value.trim();
+ for(const k of ['date','receiver','phone','address','destination','cargo','qty','carrier']){
+  if(!v(k)){toast('请把必填字段补完整');$(k).focus();return}
+ }
+ x.date=v('date');x.receiver=v('receiver');x.phone=v('phone');x.address=v('address');
+ x.destination=v('destination');x.cargo=v('cargo');x.qty=v('qty');
+ x.weight=Number(v('weight'))||0;
+ x.remark=v('remark');x.carrier=v('carrier');x.updated=new Date().toISOString();
+ syncAssignment(x);
+ JL().save();JL().refresh();renderList();
+ const num=x.number;resetEdit();
+ toast(`运单 ${num} 已更新；承运方、信封、对账、发车清单同步重算`);
+},true);
+
+/* 单票信封封面：由运单生成，预览后打印 */
+function add(p,tag,cls,txt){const n=el(tag,cls,txt);p.appendChild(n);return n}
+function info(p,label,value,wide){const c=el('div','env-info'+(wide?' wide':''));add(c,'small','',label);add(c,'strong','',value||'—');p.appendChild(c)}
+function makePaper(x,dim){
+ // 单票封面与批量封面共用同一套印版式（2026-11-12 标准）
+ return window.__JL.builders.makeEnvelope(x,dim);
+}
+function dim(){const [w,h]=$('single-env-size').value.split('x').map(Number);return {w,h}}
+let envNumber=null;
+function openEnvelope(num){
+ const x=docs().find(d=>d.number===num);if(!x)return;
+ envNumber=num;$('single-env-title').textContent=`${x.number} · ${x.destination} · ${x.receiver}`;
+ drawEnvelope();openOverlay('envelope-overlay');
+}
+function drawEnvelope(){
+ const x=docs().find(d=>d.number===envNumber);if(!x)return;
+ const stage=$('single-env-stage');stage.replaceChildren();stage.appendChild(makePaper(x,dim()));
+}
+$('single-env-size').addEventListener('change',drawEnvelope);
+$('single-env-print').addEventListener('click',()=>{
+ const x=docs().find(d=>d.number===envNumber);if(!x)return;
+ const d=dim(),root=$('print-root');root.replaceChildren();
+ const page=el('div','envelope-print-page');page.style.width=d.w+'mm';page.style.height=d.h+'mm';
+ page.appendChild(makePaper(x,d));root.appendChild(page);
+ $('env-page-style').textContent=`@page { size: ${d.w}mm ${d.h}mm; margin: 0; }`;
+ toast('已准备 1 张信封，请在打印对话框核对纸张尺寸');
+ setTimeout(()=>window.print(),60);
+});
+
+/* 今日对账单：实时派生、只读、导出与打印 */
+$('btn-ledger').addEventListener('click',()=>{
+ $('preview-csv').click();
+ $('ledger-count').textContent=`共 ${docs().length} 票 · 九列`;
+ openOverlay('ledger-overlay');
+});
+$('ledger-price').addEventListener('click',setReconciliationAmount);
+$('ledger-export').addEventListener('click',()=>$('export').click());
+$('ledger-print').addEventListener('click',()=>printOverlay('ledger-overlay'));
+
+/* 发车清单：浮层里预览与下载 */
+function openWord(){if(JL())JL().renderDispatch();openOverlay('word-overlay')}
+$('btn-word').addEventListener('click',openWord);
+$('word-print').addEventListener('click',()=>{const g=dispatchGroups().find(x=>x.key===selectedGroup);if(!g)return notify('还没有可导出的车辆');downloadWord(g)});
+
+/* 月账：每日结束才汇入 */
+function renderMonth(){
+ const arr=readMonth().slice().reverse(),box=$('month-list');box.replaceChildren();
+ $('month-count').textContent=`已汇入 ${arr.length} 个日结`;
+ if(!arr.length){box.appendChild(el('div','wb-empty','还没有日结记录。每日结束后点「日结 · 汇入今日」。'));return}
+ for(const d of arr){const r=el('div','month-row');r.append(el('b','',d.date),el('span','',`${d.count} 票 · ${Number(d.weight).toFixed(2)} 吨 · ¥${money(d.amount)}`));box.appendChild(r)}
+}
+$('btn-month').addEventListener('click',()=>{renderMonth();openOverlay('month-overlay')});
+$('month-settle').addEventListener('click',()=>{
+ let list;try{list=reconciledRows().filter(x=>x.date===today())}catch(e){toast(e.message);return}const t=today();
+ if(!list.length){toast('今天没有运单，无需日结');return}
+ const arr=readMonth();
+ if(arr.some(d=>d.date===t)){toast('今天已日结，不重复汇入');return}
+ arr.push({date:t,count:list.length,weight:list.reduce((s,x)=>s+Number(x.weight),0),
+  amount:list.reduce((s,x)=>s+Number(x.amount),0),settled:new Date().toISOString()});
+ writeMonth(arr);renderMonth();toast(`已把今日 ${list.length} 票汇入月账`);
+});
+
+/* 发运消息核对：识别 → 逐票核对 → 归组（实测版入口隐藏，接企微后启用） */
+let mockTouched=false;
+$('mock-message').addEventListener('input',()=>{mockTouched=true});
+function refreshMockHint(){
+ const hint=$('mock-hint');if(!hint)return;
+ if(mockTouched){hint.textContent='消息已手动修改；系统仍按其中的运单编号认领。';return}
+ const asg=JL()?JL().assignments:[],rest=docs().filter(x=>!asg.some(a=>a.number===x.number));
+ if(rest.length){
+  $('mock-message').value=`【发运】上海固定中转 ${rest.slice(0,2).map(x=>x.number).join(' ')}`;
+  hint.textContent='已按当前未指定承运的运单填好消息；点「模拟收到」会按编号核对并补认领。';
+ }else if(docs().length){
+  hint.textContent='当前运单在录入时都已定承运方，同一条消息会判为重复并忽略，不会覆盖归属。';
+ }else{
+  hint.textContent='先录入一票运单；承运方在录入时选定，这里只做发运消息核对。';
+ }
+}
+function groupCount(){
+ const asg=JL()?JL().assignments:[],d=docs();
+ return new Set(asg.filter(a=>d.some(x=>x.number===a.number)).map(a=>a.date+'|'+a.partner)).size;
+}
+function showMessageResult(o){
+ const box=$('message-body');box.replaceChildren();
+ box.appendChild(el('div','msg-raw',o.raw||'（空消息）'));
+ box.appendChild(el('div','msg-label','从消息里读到'));
+ const p=el('div','msg-parse'),a=el('div'),b=el('div');
+ a.append(el('small','','运单编号'),el('span','',o.nums.length?o.nums.join('、'):'未识别到'));
+ b.append(el('small','','合作方 / 发运日期'),el('span','',`${o.partner} · ${o.date}`));
+ p.append(a,b);box.appendChild(p);
+ box.appendChild(el('div','msg-label','逐票核对'));
+ for(const c of o.checks){const r=el('div','msg-row');
+  r.append(el('b','',c.num),el('span',c.kind==='ok'?'m-ok':'m-dup',c.kind==='ok'?'新增认领':(c.kind==='dup'?'重复忽略':'未执行')),el('span','',c.note));
+  box.appendChild(r)}
+ const s=el('div','msg-summary');
+ if(o.rejected){
+  s.appendChild(el('div','msg-reject','整组未执行：'+o.rejected));
+  s.appendChild(document.createTextNode('没有改动任何运单，也没有改动发车清单分组。'));
+ }else{
+  s.append(document.createTextNode('新增 '),el('b','',String(o.added)),document.createTextNode(' 条认领 · 重复忽略 '),
+   el('b','',String(o.dup)),document.createTextNode(' 条 · 当前共 '),el('b','',String(o.groups)),
+   document.createTextNode(' 个发运分组。'+(o.added?'已写入本地数据并刷新发车清单。':'数据未变化，不重复入账。')));
+ }
+ box.appendChild(s);
+ openOverlay('message-overlay');
+}
+$('mock-send').addEventListener('click',()=>{
+ const raw=$('mock-message').value.trim(),st=$('dispatch-status');
+ const nums=[...new Set(raw.match(/\b\d{7}\b/g)||[])];
+ const partner=partnerFromMessage(raw);
+ const dm=raw.match(/\b(\d{4}-\d{2}-\d{2})\b/),date=dm?dm[1]:today();
+ const base={raw,nums,partner,date,checks:[],added:0,dup:0,groups:groupCount(),rejected:''};
+ const finish=(msg,bad)=>{st.textContent=msg;st.classList.toggle('msg-error',!!bad);toast(bad?'消息未执行，没有改动数据':(base.added?`已认领 ${base.added} 票，发车清单已更新`:'重复消息，已忽略，数据未变化'));renderList();showMessageResult(base)};
+ if(!nums.length){base.rejected='消息里没有识别到 7 位运单编号';finish(base.rejected,true);return}
+ const missing=nums.filter(n=>!docs().some(x=>x.number===n));
+ if(missing.length){
+  base.rejected=`未找到运单 ${missing.join('、')}`;
+  for(const n of nums)base.checks.push({num:n,kind:'miss',note:missing.includes(n)?'本机没有这票运单':'—'});
+  finish(base.rejected+'，已阻止整组认领，避免错配。',true);return;
+ }
+ const asg=JL().assignments;
+ const conflict=nums.filter(n=>{const a=asg.find(a=>a.number===n);return a&&(a.partner!==partner||a.date!==date)});
+ if(conflict.length){
+  base.rejected=`运单 ${conflict.join('、')} 已属于别的发运组`;
+  for(const n of nums){const a=asg.find(a=>a.number===n);base.checks.push({num:n,kind:'miss',note:a?`原属 ${a.partner} · ${a.date}，不覆盖`:'—'})}
+  finish(base.rejected+'；不擅自改归属，请先核实。',true);return;
+ }
+ for(const n of nums){
+  const a=asg.find(a=>a.number===n);
+  if(a){base.dup++;base.checks.push({num:n,kind:'dup',note:`已归属 ${a.partner} · ${a.date}，重复消息忽略，不重复入账`})}
+  else{asg.push({number:n,date,partner});base.added++;base.checks.push({num:n,kind:'ok',note:`归入 ${partner} · ${date}`})}
+ }
+ if(base.added){JL().save();JL().renderDispatch()}
+ base.groups=groupCount();
+ finish(`新增 ${base.added} 条认领 · 重复忽略 ${base.dup} 条 · 当前 ${base.groups} 个发运分组。`,false);
+});
+$('message-word').addEventListener('click',()=>{closeOverlay('message-overlay');openWord()});
+
+/* 全局编号搜索 → 直接打开该运单详情 */
+const input=$('global-search'),box=$('search-result');
+input.addEventListener('input',()=>{
+ const q=input.value.trim().toLowerCase();box.replaceChildren();
+ if(!q){box.hidden=true;return}
+ box.hidden=false;
+ const hits=docs().filter(x=>[x.number,x.receiver,x.phone,x.destination,x.cargo,x.address]
+  .some(s=>String(s??'').toLowerCase().includes(q))).slice(-10).reverse();
+ box.appendChild(el('div','search-head',hits.length?`匹配 ${hits.length} 票 / 共 ${docs().length} 票`:`共 ${docs().length} 票`));
+ if(!hits.length){box.appendChild(el('div','search-empty','没有匹配的运单，换个编号、收货人或到站再试。'));return}
+ for(const x of hits){const r=el('button','search-row');r.type='button';
+  r.append(el('b','',x.number),el('span','',`${x.destination} · ${x.receiver} · ${x.cargo}`),el('small','',x.date));
+  r.addEventListener('click',()=>{box.hidden=true;input.value='';openDetail(x.number)});box.appendChild(r)}
+});
+document.addEventListener('click',e=>{if(!e.target.closest('.global-search'))box.hidden=true});
+
+if($('btn-tools'))$('btn-tools').addEventListener('click',()=>{const d=$('demo-tools');d.open=true;d.scrollIntoView({behavior:'smooth',block:'start'})});
+document.addEventListener('click',e=>{
+ if(['demo-complete','clear','seed'].includes(e.target.id))setTimeout(()=>{renderList();refreshMockHint()},80);
+});
+
+renderList();renderMonth();refreshMockHint();
+})();
+</script>
+
+<script>
+/* 钱和纸：货出门以后那半截。
+   费用、纸质回单、合作方账单差异、厂家交付，全部挂在运单编号上，
+   与主记录同存一份账；产物不另立可编辑副本，改错只更正并留痕。 */
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const KF='julong_demo_fees_v1',KR='julong_demo_receipts_v1',
+      KB='julong_demo_bills_v1',KD='julong_demo_diffs_v1',KL='julong_demo_delivery_v1';
+const TYPES=['进仓费','送货费','等时费','其他'];
+const PAYERS=['中转方','末端','巨龙'];
+const BEARERS=['厂家','巨龙','合作方'];
+function read(k){try{const v=JSON.parse(localStorage.getItem(k)||'[]');return Array.isArray(v)?v:[]}catch(e){return[]}}
+function write(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function docs(){return (window.__JL&&window.__JL.docs)||[]}
+function me(){return (window.__JL_CLOUD&&window.__JL_CLOUD.me)||'本机'}
+function now(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')}
+function money(n){return Number(n||0).toFixed(2)}
+function el(tag,cls,txt){const n=document.createElement(tag);if(cls)n.className=cls;if(txt!==undefined)n.textContent=txt;return n}
+function note(msg,bad){const t=$('toast');if(!t)return;t.textContent=msg;t.style.borderColor=bad?'#e3b7ae':'';t.classList.add('show');clearTimeout(note.timer);note.timer=setTimeout(()=>t.classList.remove('show'),2800)}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+
+/* 九列对账的「进仓费」只认已确认的费用；待确认、有差异的一律不进厂家对账。
+   写回的是派生汇总值，费用记录本身仍是唯一源头。 */
+function syncFeeSummary(){ /* 九列费用由对账接口实时计算，不写普通运单。 */ }
+function feesOf(num){return read(KF).filter(f=>f.number===num)}
+function receiptOf(num){return read(KR).find(r=>r.number===num)||{number:num}}
+function receiptOn(r,k){return !!(r&&r[k]&&!r[k].off)} /* 撤销过的状态不算已确认 */
+function setReceipt(num,field,on){
+ const all=read(KR);let r=all.find(x=>x.number===num);
+ if(!r){r={number:num};all.push(r)}
+ if(on===false){
+  if(r[field]&&!r[field].off){r[field]={at:r[field].at,by:r[field].by,off:true,offAt:now(),offBy:me()}}
+  else delete r[field];
+ }else r[field]={at:now(),by:me()};
+ write(KR,all);
+}
+function dueLabel(){
+ const d=new Date(),y=d.getFullYear(),m=d.getMonth()+2;
+ const yy=m>12?y+1:y,mm=m>12?1:m;
+ return yy+'-'+String(mm).padStart(2,'0')+'-10';
+}
+function monthLabel(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
+
+/* ---------- 业务动作 ---------- */
+function addFee(f){
+ const fees=read(KF);
+ const key=[f.number,f.type,Number(f.amount).toFixed(2),(f.voucher||'').trim()].join('|');
+ if(fees.some(x=>[x.number,x.type,Number(x.amount).toFixed(2),(x.voucher||'').trim()].join('|')===key))
+  return '这张凭证已经登记过，不重复入账';
+ f.id=uid();f.status='待确认';f.by=me();f.at=now();fees.push(f);write(KF,fees);syncFeeSummary();return '';
+}
+function askFinancePassword(label){
+ return new Promise(resolve=>{
+  const dialog=document.createElement('dialog'), form=document.createElement('form');form.method='dialog';
+  const title=document.createElement('label');title.textContent=label;
+  const input=document.createElement('input');input.type='password';input.autocomplete='current-password';input.required=true;title.appendChild(input);
+  const cancel=document.createElement('button');cancel.type='button';cancel.textContent='取消';
+  const submit=document.createElement('button');submit.type='submit';submit.textContent='继续';
+  form.append(title,cancel,submit);dialog.appendChild(form);document.body.appendChild(dialog);
+  let value=null;cancel.onclick=()=>dialog.close();form.onsubmit=()=>{value=input.value};
+  dialog.onclose=()=>{input.value='';dialog.remove();resolve(value)};dialog.showModal();input.focus();
+ });
+}
+function showFinanceReview(detail){
+ return new Promise(resolve=>{
+  const dialog=document.createElement('dialog');dialog.style.maxWidth='min(720px,90vw)';dialog.style.maxHeight='80vh';dialog.style.overflow='auto';
+  const title=document.createElement('h2');title.textContent='请核对候选与服务端证据';
+  const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=detail;
+  const cancel=document.createElement('button');cancel.type='button';cancel.textContent='取消';
+  const accept=document.createElement('button');accept.type='button';accept.textContent='核对无误，继续';
+  let approved=false;cancel.onclick=()=>dialog.close();accept.onclick=()=>{approved=true;dialog.close()};
+  dialog.append(title,pre,cancel,accept);document.body.appendChild(dialog);dialog.onclose=()=>{dialog.remove();resolve(approved)};dialog.showModal();
+ });
+}
+async function financeReview(payload,candidateId){
+ try{
+  if(!candidateId){
+   const password=await askFinancePassword('输入财务账号密码以创建待审候选');if(password===null)return;
+   const create=await fetch('/api/finance/candidates',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({...payload,password})});
+   const result=await create.json();if(!create.ok)throw new Error(result.error||'候选创建失败');
+   candidateId=result.candidate_id;
+  }
+  const endpoint='/api/finance/candidates/'+encodeURIComponent(candidateId);
+  const previewResponse=await fetch(endpoint,{credentials:'same-origin'});
+  const preview=await previewResponse.json();if(!previewResponse.ok)throw new Error(preview.error||'候选读取失败');
+  if(preview.stale)throw new Error('账本已变化，请重新核对');
+  const detail=JSON.stringify(preview,null,2);
+  if(!await showFinanceReview(detail))return;
+  const confirmation=await askFinancePassword('再次输入财务账号密码，确认执行');if(confirmation===null)return;
+  const finalResponse=await fetch(endpoint+'/confirm',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:confirmation})});
+  const final=await finalResponse.json();if(!finalResponse.ok)throw new Error(final.error||'确认失败');
+  alert('确认成功，账本已更新');location.reload();
+ }catch(e){const messages={difference_evidence_missing:'缺少该票对应费用或账单证据，请先补齐',invalid_difference_waybill:'运单不存在或编号不唯一，请核对',invalid_difference_type:'费用类型无效，请核对',revision_conflict:'账本已变化，请刷新后重新审阅',reauthentication_failed:'密码不正确或账号无权确认'};note('未确认：'+(messages[e.message]||e.message)+'。',true)}
+}
+function parseBill(text){
+ return text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{
+  const p=l.split(/[,，\t]/).map(s=>s.trim());
+  return {number:(p[0]||'').trim(),type:(p[1]||'').trim(),amount:Number(p[2])||0};
+ }).filter(r=>r.number);
+}
+function reconcile(rows){
+ const fees=read(KF),out=[];
+ for(const b of rows){
+  const d=docs().find(x=>x.number===b.number);
+  const same=fees.filter(f=>f.number===b.number);
+  const exact=same.find(f=>f.type===b.type&&Number(f.amount)===Number(b.amount));
+  if(exact)out.push({...b,kind:'一致',note:'金额与费用类型都对得上'});
+  else if(same.length)out.push({...b,kind:'差异',note:'我方记 '+same.map(f=>f.type+' ¥'+money(f.amount)).join('、')+'；对方为 '+b.type+' ¥'+money(b.amount)+'。费用性质或金额不同，可能是两笔，不能互相抵消'+(d?'':'（该编号在运单库中不存在）')});
+  else if(!d)out.push({...b,kind:'编号对不上',note:'运单库里没有这个编号，不猜测归属'});
+  else out.push({...b,kind:'我方缺记录',note:'有这票货，但我方没登记过这笔费用'});
+ }
+ for(const f of fees)if(!rows.some(r=>r.number===f.number))
+  out.push({number:f.number,type:f.type,amount:f.amount,kind:'对方账单缺',note:'我方有费用记录，对方账单未列'});
+ return out;
+}
+
+function deliver(numbers){
+ if(!numbers.length)return '请先勾选要交给厂家的运单';
+ const all=read(KL),m=monthLabel();
+ if(all.some(x=>x.month===m))return '本月已登记过交付，需要补交请逐票标「补交」';
+ all.push({month:m,due:dueLabel(),numbers,by:me(),at:now()});write(KL,all);return '';
+}
+
+/* ---------- 详情里挂两块（只追加，不改主记录字段） ---------- */
+function renderDetail(num,body){
+ if(!body)return;
+ for(const id of ['ops-detail-fees','ops-detail-receipt']){const old=$(id);if(old)old.remove()}
+ const fs=feesOf(num).filter(f=>!String(f.type||'').includes('厂家运费'));
+ if((window.__JL_CLOUD||{}).role!=='employee'){
+ const a=el('div','detail-status');a.id='ops-detail-fees';a.appendChild(el('h3','','费用与凭证'));
+ if(!fs.length)a.appendChild(el('div','state-row',''));
+ if(!fs.length){const q=el('div','state-row');q.append(el('span','','已登记费用'),el('span','','暂无'));a.appendChild(q)}
+ else for(const f of fs){const q=el('div','state-row');
+  q.append(el('span','',f.type),
+   el('span','',f.status+' · '+f.by));a.appendChild(q)}
+ const go1=el('button','btn btn-sm','登记费用 / 核对账单');go1.type='button';
+ go1.addEventListener('click',()=>openOps('fees'));a.appendChild(go1);
+ body.appendChild(a);
+ }
+
+ const r=receiptOf(num);
+ const b=el('div','detail-status');b.id='ops-detail-receipt';b.appendChild(el('h3','','回单与原件（四件事分开记）'));
+ [['photo','签收回单照片已收'],['paper','纸质原件回到公司'],['delivered','原件已交厂家'],['supplement','逾期补交登记']]
+  .forEach(([k,label])=>{const q=el('div','state-row');
+   const v=r[k],txt=receiptOn(r,k)?v.by+' · '+v.at:(v&&v.off?'已撤销 · '+v.offBy+' · '+v.offAt:'未确认');
+   q.append(el('span','',label),el('span','',txt));b.appendChild(q)});
+ b.appendChild(el('div','ops-hint','照片收到不等于纸质原件回到公司，四个状态互不替代。次月 '+dueLabel()+' 前要交齐。'));
+ const go2=el('button','btn btn-sm','更新回单 / 交付登记');go2.type='button';
+ go2.addEventListener('click',()=>openOps('receipt'));b.appendChild(go2);
+ body.appendChild(b);
+}
+
+/* ---------- 业务台账浮层 ---------- */
+let tab='fees',lastBill=[],lastFeeNum='';
+function openOps(which){tab=((window.__JL_CLOUD||{}).role==='employee')?'receipt':(which||'fees');$('ops-overlay').hidden=false;document.body.style.overflow='hidden';renderOps()}
+function closeOps(){$('ops-overlay').hidden=true;if(!document.querySelector('.overlay:not([hidden])'))document.body.style.overflow=''}
+function renderOps(){
+ const employee=(window.__JL_CLOUD||{}).role==='employee';
+ document.querySelectorAll('#ops-tabs button').forEach(b=>{if(['fees','bill'].includes(b.dataset.tab))b.hidden=employee});
+ document.querySelectorAll('#ops-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+ const p=$('ops-pane');p.replaceChildren();
+ if(tab==='fees')paneFees(p);else if(tab==='bill')paneBill(p);
+ else if(tab==='receipt')paneReceipt(p);else paneDeliver(p);
+}
+function paneFees(p){
+ const candidates=el('div','ops-row');
+ const reload=el('button','btn btn-sm','读取待审候选');reload.type='button';
+ reload.onclick=async()=>{
+  candidates.replaceChildren();
+  try{
+   const response=await fetch('/api/finance/candidates',{credentials:'same-origin'});
+   if(!response.ok)throw new Error();
+   const result=await response.json();
+   if(!result.items.length)candidates.textContent='暂无可审核候选';
+   for(const row of result.items){
+    const button=el('button','btn btn-sm',(row.kind==='difference'?'审阅差异 ':'审阅费用 ')+row.record_id);
+    button.type='button';button.onclick=()=>financeReview(null,row.candidate_id);candidates.appendChild(button);
+   }
+  }catch(_){candidates.textContent='待审候选暂时无法读取';}
+ };
+ p.append(reload,candidates);
+ p.appendChild(el('p','ops-note','群里报来的进仓费、送货费、等时费登记在这里。同一张凭证重复转发只记一次；费用类型不能混，金额对不上只标差异、不自动改账。'));
+ const form=el('div','ops-form');
+ const num=el('select');num.id='ops-fee-num';
+ num.appendChild(new Option('选择运单编号',''));
+ for(const d of docs().slice().reverse())num.appendChild(new Option(d.number+' · '+d.destination,d.number));
+ if(lastFeeNum&&[...num.options].some(o=>o.value===lastFeeNum))num.value=lastFeeNum;
+ const type=el('select');type.id='ops-fee-type';TYPES.forEach(t=>type.appendChild(new Option(t,t)));
+ const amt=el('input');amt.id='ops-fee-amt';amt.type='number';amt.step='0.01';amt.min='0';amt.placeholder='金额';
+ const date=el('input');date.id='ops-fee-date';date.type='date';date.value=now().slice(0,10);
+ const payer=el('select');payer.id='ops-fee-payer';PAYERS.forEach(t=>payer.appendChild(new Option('垫付 '+t,t)));
+ const bearer=el('select');bearer.id='ops-fee-bearer';BEARERS.forEach(t=>bearer.appendChild(new Option('承担 '+t,t)));
+ const voucher=el('input');voucher.id='ops-fee-voucher';voucher.placeholder='凭证编号 / 照片编号';
+ [['运单编号',num],['费用类型',type],['金额（元）',amt],['发生日期',date],['垫付方',payer],['最终承担',bearer],['凭证',voucher]]
+  .forEach(([k,n])=>{const w=el('label','ops-field');w.append(el('small','',k),n);form.appendChild(w)});
+ const btn=el('button','btn btn-primary btn-sm','登记这笔费用');btn.type='button';
+ btn.addEventListener('click',()=>{
+  const f={number:num.value,type:type.value,amount:Number(amt.value),date:date.value,
+   payer:payer.value,bearer:bearer.value,voucher:voucher.value.trim()};
+  if(!f.number)return note('先选运单编号',true);
+  if(!(f.amount>0))return note('金额要大于 0',true);
+  if(!f.voucher)return note('请填凭证编号，重复转发靠它拦',true);
+  const err=addFee(f);if(err)return note(err,true);
+  lastFeeNum=f.number;
+  amt.value='';voucher.value='';note('已登记，状态为待确认；确认后才进九列对账');renderOps();
+ });
+ form.appendChild(btn);
+ if((window.__JL_CLOUD||{}).role==='owner_finance')p.appendChild(form);
+ const fees=read(KF).slice().reverse();
+ p.appendChild(el('h3','ops-h3','已登记费用（'+fees.length+'）'));
+ if(!fees.length)p.appendChild(el('div','ops-empty','还没有费用记录。'));
+ for(const f of fees){
+  const row=el('div','ops-row');
+  row.append(el('b','',f.number),el('span','',f.type+(f.amount==null?' · 金额未授权':' ¥'+money(f.amount))),
+   el('span','',f.payer+' 垫 · '+f.bearer+' 担 · '+(f.voucher||'—')),
+   el('span','ops-badge '+(f.status==='已确认'?'ok':f.status==='有差异'?'warn':''),f.status),
+   el('small','',f.by+' · '+f.at));
+  if(f.status==='待确认'||f.status==='有差异'){
+   const b1=el('button','btn btn-sm','确认无误'),b2=el('button','btn btn-sm','标为差异');
+   b1.type=b2.type='button';
+   b1.addEventListener('click',()=>financeReview({fee_id:f.id,status:'已确认'}));
+   b2.addEventListener('click',()=>financeReview({fee_id:f.id,status:'有差异'}));
+   row.append(b1,b2);
+  }
+  if(f.status==='已确认'){const b=el('button','btn btn-sm','作废');b.type='button';b.addEventListener('click',()=>{const reason=prompt('请输入作废原因');if(reason&&reason.trim())financeReview({fee_id:f.id,status:'作废',reason:reason.trim()})});row.appendChild(b)}
+  p.appendChild(row);
+ }
+}
+function paneBill(p){
+ p.appendChild(el('p','ops-note','把合作方账单按「编号,费用类型,金额」逐行粘进来核对。系统只挑出对不上的地方、摆出双方原话，谁对谁错由人拍板；确认只留结论，不覆盖任何一方的金额。'));
+ const ta=el('textarea');ta.id='ops-bill-text';ta.rows=6;ta.placeholder='0001348,进仓费,180\n0001588,送货费,120';
+
+ p.appendChild(ta);
+ const btn=el('button','btn btn-primary btn-sm','逐票核对');btn.type='button';
+ btn.addEventListener('click',()=>{
+  lastBill=reconcile(parseBill(ta.value));
+  const all=read(KB);all.push({id:uid(),at:now(),by:me(),raw:ta.value,rows:parseBill(ta.value)});write(KB,all);
+  note('核对完成，只列差异与证据');renderOps();
+ });p.appendChild(btn);
+ if(!lastBill.length){p.appendChild(el('div','ops-empty','点上面按钮开始核对。'));}
+ else{
+  p.appendChild(el('h3','ops-h3','核对结果（'+lastBill.length+' 条）'));
+  for(const r of lastBill){
+   const row=el('div','ops-row');
+   row.append(el('b','',r.number),el('span','',(r.type||'—')+' ¥'+money(r.amount)),
+    el('span','ops-badge '+(r.kind==='一致'?'ok':'warn'),r.kind),el('small','',r.note));
+   if(r.kind!=='一致'){
+    for(const d of ['两笔分开算，不抵消','我方记错，待更正','对方记错，待对方改']){
+     const b=el('button','btn btn-sm',d);b.type='button';
+     b.addEventListener('click',()=>financeReview({kind:'difference',difference_id:crypto.randomUUID(),number:r.number,type:r.type,decision:d}));
+     row.appendChild(b);
+    }
+   }
+   p.appendChild(row);
+  }
+  const ds=read(KD).slice(-5).reverse();
+  if(ds.length){p.appendChild(el('h3','ops-h3','最近的人工结论'));
+   for(const d of ds){const q=el('div','ops-row');q.append(el('b','',d.number),el('span','',d.decision),el('small','',d.by+' · '+d.at));p.appendChild(q)}}
+ }
+}
+function paneReceipt(p){
+ p.appendChild(el('p','ops-note','四个状态分开记：照片收到、纸质原件回到公司、原件交厂家、逾期补交。点一下记上，再点一下撤销，撤销也记谁撤的几点撤的；照片不能顶替原件。'));
+ const list=docs().slice().reverse();
+ p.appendChild(el('h3','ops-h3','按票更新（'+list.length+'）'));
+ for(const d of list){
+  const r=receiptOf(d.number),row=el('div','ops-row');
+  row.append(el('b','',d.number),el('span','',d.destination+' · '+d.receiver));
+  [['photo','照片已收'],['paper','原件回公司'],['delivered','已交厂家'],['supplement','补交登记']]
+   .forEach(([k,label])=>{
+    const on=receiptOn(r,k),v=r[k];
+    const b=el('button','btn btn-sm '+(on?'done':''),on?label+' ✓':label);b.type='button';
+    b.title=on?(v.by+' · '+v.at+' · 再点一下撤销'):((v&&v.off)?('已撤销 '+v.offBy+' · '+v.offAt+' · 点一下重新记上'):'点一下记上当前操作人与时间');
+    b.addEventListener('click',()=>{setReceipt(d.number,k,!on);note(d.number+(on?' 已撤销：':' 已记：')+label+'（'+me()+'）');renderOps()});
+    row.appendChild(b);
+   });
+  p.appendChild(row);
+ }
+ const missing=list.filter(d=>!receiptOn(receiptOf(d.number),'paper'));
+ p.appendChild(el('h3','ops-h3','缺纸质原件，需要催收（'+missing.length+' 票）'));
+ if(!missing.length)p.appendChild(el('div','ops-empty','都齐了。'));
+ else{const q=el('div','ops-empty','催：'+missing.map(d=>d.number).join('、'));p.appendChild(q)}
+}
+function paneDeliver(p){
+ p.appendChild(el('p','ops-note','次月 '+dueLabel()+' 前把上月纸质原件送交厂家并给对账单。没齐的允许后补，但得单记一笔，不能当齐了。'));
+ const list=docs().slice().reverse();
+ const box=el('div','ops-pick');
+ for(const d of list){const l=el('label','ops-check');const c=el('input');c.type='checkbox';c.value=d.number;
+  const r=receiptOf(d.number),back=receiptOn(r,'paper');if(back)c.checked=true;
+  l.append(c,document.createTextNode(' '+d.number+' · '+d.destination+(back?'（原件已回）':'（原件未回）')));box.appendChild(l)}
+ p.appendChild(box);
+ const btn=el('button','btn btn-primary btn-sm','登记本月交付给厂家');btn.type='button';
+ btn.addEventListener('click',()=>{
+  const nums=[...box.querySelectorAll('input:checked')].map(c=>c.value);
+  const err=deliver(nums);if(err)return note(err,true);
+  note('已登记交付 '+nums.length+' 票');renderOps();
+ });p.appendChild(btn);
+ const all=read(KL).slice().reverse();
+ p.appendChild(el('h3','ops-h3','交付记录'));
+ if(!all.length)p.appendChild(el('div','ops-empty','还没登记过。'));
+ for(const x of all){const q=el('div','ops-row');
+  q.append(el('b','',x.month+' 月度'),el('span','',x.numbers.length+' 票 · 截止 '+x.due),el('small','',x.by+' · '+x.at+' · '+x.numbers.join('、')));p.appendChild(q)}
+}
+
+/* ---------- 绑定 ---------- */
+if($('btn-ops'))$('btn-ops').addEventListener('click',()=>openOps('fees'));
+if($('ops-close'))$('ops-close').addEventListener('click',closeOps);
+if($('ops-mask'))$('ops-mask').addEventListener('click',closeOps);
+if($('ops-tabs'))$('ops-tabs').addEventListener('click',e=>{const b=e.target.closest('button[data-tab]');if(b){tab=b.dataset.tab;renderOps()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeOps()});
+document.addEventListener('submit',e=>{if(e.target.id==='waybill-form')setTimeout(syncFeeSummary,60)});
+document.addEventListener('click',e=>{if(['demo-complete','clear'].includes(e.target.id))setTimeout(syncFeeSummary,120)});
+
+window.__JL_OPS={renderDetail,openOps,syncFeeSummary,read,write,addFee,setReceipt,receiptOn,reconcile,parseBill,deliver,
+ keys:{fees:KF,receipts:KR,bills:KB,diffs:KD,delivery:KL}};
+syncFeeSummary();
+})();
+</script>
+
+
+
+<script>
+/* 长列表与运单编号选择：随数据积累自动出现「输入即筛」。
+   只做显示层过滤——不改数据、不改勾选、不改提交范围、不改任何业务事件。
+   打印前由 CSS 恢复全部条目，避免打印出来的清单缺票。 */
+(function(){
+'use strict';
+var THRESH=6;
+var $=function(id){return document.getElementById(id)};
+var norm=function(s){return String(s||'').toLowerCase().replace(/\s+/g,'')};
+var bars=[],selects=[];
+
+function applyList(rec){
+  var q=norm(rec.input.value),items=rec.container.querySelectorAll(rec.cfg.sel),total=items.length,shown=0;
+  [].forEach.call(items,function(it){
+    var hit=!q||norm(it.textContent).indexOf(q)>=0;
+    it.classList.toggle('jl-hide',!hit);
+    if(hit)shown++;
+  });
+  rec.count.textContent=q?('显示 '+shown+' / '+total):(total>THRESH?('共 '+total+' 条'):'');
+  rec.bar.hidden=total<=THRESH;
+  if(total<=THRESH&&q){rec.input.value='';applyList(rec)}
+}
+function makeBar(container,cfg){
+  if(!container)return null;
+  if(container.__jlBar)return container.__jlBar;
+  var bar=document.createElement('div');bar.className='jl-filterbar';
+  var input=document.createElement('input');
+  input.type='search';input.className='jl-filter-input';input.placeholder=cfg.ph;
+  input.setAttribute('aria-label',cfg.ph);input.autocomplete='off';
+  var count=document.createElement('span');count.className='jl-filter-count';
+  var tip=document.createElement('span');tip.className='jl-filter-tip';tip.textContent=cfg.tip||'';
+  bar.appendChild(input);bar.appendChild(count);bar.appendChild(tip);
+  var anchor=cfg.anchor?container.parentNode.querySelector(cfg.anchor):null;
+  container.parentNode.insertBefore(bar,anchor||container);
+  var rec={container:container,cfg:cfg,bar:bar,input:input,count:count};
+  container.__jlBar=rec;bars.push(rec);
+  input.addEventListener('input',function(){applyList(rec)});
+  input.addEventListener('keydown',function(e){if(e.key==='Escape'){input.value='';applyList(rec)}if(e.key==='Enter')e.preventDefault()});
+  return rec;
+}
+/* 运单编号：一个框就是下拉。点开列全部、边打边筛、上下键挑、回车定。
+   原生 select 视觉隐藏但仍在，选中后写回它的值并派发 change —— 下游逻辑一行不改。 */
+function makeSelectSearch(sel,ph){
+  if(!sel||sel.__jlSearch)return;
+  var wrap=document.createElement('div');wrap.className='jl-picker';
+  var box=document.createElement('input');
+  box.type='text';box.className='jl-picker-input';box.placeholder=ph;
+  box.setAttribute('role','combobox');box.setAttribute('aria-expanded','false');box.setAttribute('aria-autocomplete','list');
+  box.autocomplete='off';
+  var pop=document.createElement('div');pop.className='jl-picker-pop';pop.hidden=true;
+  sel.parentNode.insertBefore(wrap,sel);
+  wrap.appendChild(box);wrap.appendChild(sel);wrap.appendChild(pop);
+  sel.classList.add('jl-picker-native');
+  var rec={sel:sel,box:box,pop:pop,wrap:wrap,items:[],idx:-1};
+  sel.__jlSearch=rec;selects.push(rec);
+  function opts(){return [].slice.call(sel.options).filter(function(o){return o.value})}
+  function syncText(){var cur=sel.value,hit=opts().filter(function(o){return o.value===cur})[0];box.value=hit?hit.textContent:''}
+  function hide(){pop.hidden=true;box.setAttribute('aria-expanded','false');rec.idx=-1}
+  function paint(){[].forEach.call(pop.children,function(c,i){c.classList.toggle('active',i===rec.idx)})}
+  function choose(o){
+    sel.value=o.value;syncText();hide();
+    sel.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  function render(){
+    var q=norm(box.value);
+    rec.items=opts().filter(function(o){return !q||norm(o.textContent).indexOf(q)>=0||norm(o.value).indexOf(q)>=0});
+    pop.textContent='';rec.idx=-1;
+    if(!rec.items.length){
+      var e=document.createElement('div');e.className='jl-picker-empty';
+      e.textContent=opts().length?'没有匹配的编号':'还没有运单，先录一票';
+      pop.appendChild(e);pop.hidden=false;box.setAttribute('aria-expanded','true');return;
+    }
+    rec.items.forEach(function(o){
+      var b=document.createElement('button');b.type='button';b.className='jl-picker-item';
+      b.textContent=o.textContent;
+      b.addEventListener('mousedown',function(ev){ev.preventDefault()});
+      b.addEventListener('click',function(){choose(o)});
+      pop.appendChild(b);
+    });
+    pop.hidden=false;box.setAttribute('aria-expanded','true');
+    if(rec.items.length===1){rec.idx=0;paint()}
+  }
+  box.addEventListener('focus',render);
+  box.addEventListener('click',render);
+  box.addEventListener('input',render);
+  box.addEventListener('blur',function(){setTimeout(hide,120)});
+  box.addEventListener('keydown',function(e){
+    if(e.key==='Escape'){if(pop.hidden){box.value='';syncText()}else hide();return}
+    if(pop.hidden){if(e.key==='ArrowDown'||e.key==='Enter'){e.preventDefault();render()}return}
+    if(!rec.items.length)return;
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+      e.preventDefault();
+      rec.idx=(rec.idx+(e.key==='ArrowDown'?1:-1)+rec.items.length)%rec.items.length;paint();
+    }else if(e.key==='Enter'){
+      e.preventDefault();
+      if(rec.idx>=0)choose(rec.items[rec.idx]);
+      else if(rec.items.length===1)choose(rec.items[0]);
+    }
+  });
+  sel.addEventListener('change',function(){syncText();hide()});
+  rec.reset=function(){box.value='';syncText();hide()};
+  syncText();
+}
+function scan(){
+  /* 台账每次重绘都会重建编号控件，旧引用随手丢掉，避免越积越多 */
+  bars=bars.filter(function(r){return r.container&&r.container.isConnected});
+  selects=selects.filter(function(r){return r.sel&&r.sel.isConnected});
+  [
+    {c:$('waybill-list'),sel:'.wb-row',ph:'筛选运单：编号 / 到站 / 收货人 / 货物 / 承运方',tip:'',anchor:'.list-columns'},
+    {c:$('ops-pane'),sel:'.ops-row,.ops-check',ph:'筛选台账：编号 / 到站 / 收货人 / 费用 / 凭证',tip:'只影响显示'},
+    {c:$('env-waybill-list'),sel:'.env-item',ph:'筛选运单：编号 / 到站 / 收货人',tip:'打印按已勾选'},
+    {c:$('month-list'),sel:'.month-row',ph:'筛选日结：日期 / 票数',tip:''},
+    {c:$('ai-body'),sel:'.ai-card',ph:'筛选 AI 记录：编号 / 群 / 发送人 / 结论',tip:''}
+  ].forEach(function(t){var r=makeBar(t.c,t);if(r)applyList(r)});
+
+  /* 发车清单分组：按日期与合作方筛选横向 tab */
+  var gs=document.querySelector('#word-wrap .group-selector');
+  if(gs){
+    if(!gs.__jlSearch){
+      var gi=document.createElement('input');
+      gi.type='search';gi.className='jl-group-search';gi.placeholder='筛选分组：日期 / 合作方';
+      gi.setAttribute('aria-label','筛选分组');gi.autocomplete='off';
+      gs.insertBefore(gi,gs.firstChild);gs.__jlSearch=gi;
+      gi.addEventListener('input',function(){
+        var q=norm(gi.value);
+        [].forEach.call(gs.querySelectorAll('button'),function(b){b.classList.toggle('jl-hide',!!q&&norm(b.textContent).indexOf(q)<0)});
+      });
+    }
+    gs.__jlSearch.hidden=gs.querySelectorAll('button').length<=THRESH;
+  }
+
+  /* 运单编号：只要账里有票就合成一个框，票少也一样，不随数量变样 */
+  var fee=$('ops-fee-num');
+  if(fee&&fee.options.length>1)makeSelectSearch(fee,'点开选编号，或输入编号 / 到站 / 收货人');
+  [].forEach.call(document.querySelectorAll('select.ai-pick'),function(s){
+    if(s.options.length>1)makeSelectSearch(s,'点开选编号，或输入编号 / 到站');
+  });
+}
+function clearAll(){
+  bars.forEach(function(r){r.input.value='';applyList(r)});
+  selects.forEach(function(r){if(r.reset)r.reset()});
+  var g=document.querySelector('.jl-group-search');
+  if(g){g.value='';g.dispatchEvent(new Event('input'))}
+}
+window.addEventListener('beforeprint',clearAll);
+document.addEventListener('click',function(e){
+  if(e.target.closest&&e.target.closest('#ops-tabs'))setTimeout(clearAll,0);
+});
+var timer=null;
+var obs=new MutationObserver(function(){
+  clearTimeout(timer);timer=setTimeout(scan,60);
+});
+obs.observe(document.body,{childList:true,subtree:true});
+scan();
+window.__JL_FILTER={scan:scan,clear:clearAll,get bars(){return bars},get selects(){return selects}};
+})();
+</script>
+<div id="jl-ai" aria-hidden="true">
+  <div id="jl-ai-grip" role="button" tabindex="0" aria-label="返回手动工作台"><span></span></div>
+  <button id="jl-ai-back" type="button" aria-label="返回手动工作台">↓ 返回手动台</button>
+  <iframe id="jl-ai-frame" data-src="/agent-v3/" src="about:blank" title="AI 工作台"></iframe>
+</div>
+<script>
+/* ===== 外层：整页往下拽，露出底下的 AI 工作台 =====
+   手动台是一张纸，AI 台铺在纸底下。纸挪开多少，就露多少。
+   AI 台里面长什么样，这层一概不管。 */
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var root = document.querySelector('.shell');
+  var pull = $('jl-pull');
+  var ai = $('jl-ai');
+  var frame = $('jl-ai-frame');
+  var grip = $('jl-ai-grip');
+  var brand = $('jl-brand');
+  var backBtn = $('jl-ai-back');
+  function showBack(on) { if (backBtn) backBtn.classList.toggle('show', !!on); }
+  var AI_URL = frame.getAttribute('data-src') || '/agent-v3/';
+  var aiLoaded = false;
+  var returnFocus = null, returnScroll = 0;
+  var openPush = 0, lastWinW = window.innerWidth;
+  var hint = $('jl-first-hint');
+  var teachKey = 'jl-ai-entry-seen-v1';
+  function rememberEntry() {
+    if (hint) hint.hidden = true;
+    pull.classList.remove('jl-teach','jl-unread');
+    pull.setAttribute('aria-label','打开 AI 工作台');
+    try { localStorage.setItem(teachKey, '1'); } catch (_) {}
+  }
+  function captureReturn() { returnFocus=document.activeElement; returnScroll=st(); }
+  function restoreReturn() {
+    setTimeout(function(){
+      if(open) return;
+      window.scrollTo(0,returnScroll);
+      if(returnFocus && returnFocus.isConnected && returnFocus.focus) returnFocus.focus({preventScroll:true});
+    },350);
+  }
+  function currentContext() {
+    var number='', view='';
+    if ($('detail-overlay') && !$('detail-overlay').hidden) {
+      number=($('detail-number').textContent.match(/\d+/)||[])[0]||''; view='查看运单';
+    } else if ($('number') && $('number').disabled) {
+      number=$('number').value.trim(); view='编辑运单';
+    } else if ($('number') && $('number').value.trim()) {
+      number=$('number').value.trim(); view='录入运单（尚未保存）';
+    }
+    return /^\d{1,32}$/.test(number) ? {number:number,view:view} : null;
+  }
+  frame.addEventListener('load',function(){ if(open) post('jl-shell-opened'); });
+  /* 切换已改为按钮一键操作，旧的"下拉找我"提示不再显示（保留 teachKey 记录以免影响其它逻辑） */
+  try { if(!localStorage.getItem(teachKey)) {
+    try { localStorage.setItem(teachKey, '1'); } catch (_) {}
+  }} catch (_) {}
+
+
+  function ensureAI() {
+    rememberEntry();
+    ai.setAttribute("aria-hidden","false");
+    if (!aiLoaded) { aiLoaded = true; frame.src = AI_URL; return; }
+    post('jl-shell-opened');
+  }
+  if (!root || !pull || !ai || !frame) return;
+
+  var open = false, dragging = false, pullMode = null;
+  var startY = 0, dy = 0, upBase = 0, acc = 0;
+  var ORIGIN = (location.origin === 'null' || location.protocol === 'file:') ? '*' : location.origin;
+
+  function vh() { return window.innerHeight || document.documentElement.clientHeight || 600; }
+  function st() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
+  function show(on) { ai.classList.toggle('jl-show', !!on); showBack(on); }
+  /* AI 打开动画结束后再隐藏手动台：动画期间还得看得见纸往下走。
+     iOS 弹键盘顶起文档时，隐藏的纸不会被带回来，顶栏就不会漏。 */
+  function settleHide(delay) {
+    setTheme(true);
+    setTimeout(function () {
+      if (open) document.body.classList.add('jl-ai-settled');
+    }, delay || 340);
+  }
+  function unhide() { document.body.classList.remove('jl-ai-settled'); setTheme(false); }
+  /* 顶层文档主题色：iOS Safari 键盘工具条/地址栏取的是最外层的 theme-color，
+     嵌在 iframe 里的 AI 页设了深色也不影响外层。进 AI 时切成深色，回手动台切回浅色。 */
+  function setTheme(dark) {
+    var m = document.getElementById('jl-theme-color');
+    if (m) m.setAttribute('content', dark ? '#0b1118' : '#eef0f2');
+  }
+  /* 把手动台整张纸推到屏幕下方的距离，在打开那一刻定死。
+     手机键盘弹起会触发 resize 并让 innerHeight 变小；若那时按新高度重算，
+     纸就推不够远，顶栏会漏回键盘上沿压住 AI。所以只有宽度变化（横竖屏）才允许重算。 */
+  function pushDown() { root.style.transform = 'translateY(' + (vh() + returnScroll) + 'px)'; }
+
+  function move(d) {
+    if (d < 0) d = 0;
+    if (d > vh()) d = vh();
+    root.style.transform = 'translateY(' + d + 'px)';
+    show(true);
+  }
+
+  function settleDown() {
+    dragging = false; pullMode = null; acc = 0;
+    document.body.classList.remove('jl-dragging');
+    root.style.transition = 'transform .3s cubic-bezier(.22,.72,.2,1)';
+    if (dy > vh() * 0.32) {
+      pushDown();
+      document.body.classList.add('jl-ai-open');
+      open = true;
+      show(true);
+      settleHide();
+      ensureAI();
+    } else {
+      unhide();
+      root.style.transform = '';
+      document.body.classList.remove('jl-ai-open');
+      open = false;
+      setTimeout(function () { if (!open) show(false); }, 340);
+      post('jl-shell-closed');
+    }
+    setTimeout(function () { root.style.transition = ''; }, 340);
+    dy = 0;
+  }
+
+  function close(smooth) {
+    if (!open) return;
+    unhide();
+    var wasSmooth = document.body.classList.contains('jl-switch-mode');
+    if (smooth || wasSmooth) {
+      /* 按钮返回：去掉 switch-mode 前先保留淡入，再清理 */
+      document.body.classList.remove('jl-ai-open');
+      open = false;
+      setTimeout(function () {
+        document.body.classList.remove('jl-switch-mode');
+        if (!open) show(false);
+      }, 320);
+    } else {
+      root.style.transition = 'transform .3s cubic-bezier(.22,.72,.2,1)';
+      root.style.transform = '';
+      document.body.classList.remove('jl-ai-open');
+      open = false;
+      setTimeout(function () {
+        root.style.transition = '';
+        if (!open) show(false);
+      }, 340);
+    }
+    post('jl-shell-closed');
+    ai.setAttribute('aria-hidden','true');
+    restoreReturn();
+  }
+
+  function openNow(smooth) {
+    if (open) return;
+    captureReturn();
+    document.body.classList.toggle('jl-switch-mode', !!smooth);
+    if (smooth) {
+      /* 按钮切换：纸原地淡出，不整屏位移 */
+      root.style.transition = '';
+      document.body.classList.add('jl-ai-open');
+      open = true;
+      show(true);
+      settleHide(280);
+    } else {
+      root.style.transition = 'transform .3s cubic-bezier(.22,.72,.2,1)';
+      pushDown();
+      document.body.classList.add('jl-ai-open');
+      open = true;
+      show(true);
+      settleHide();
+      setTimeout(function () { root.style.transition = ''; }, 340);
+    }
+    ensureAI();
+  }
+
+  /* ---- 把手：往下拖 ---- */
+  function gripDown(e) {
+    if (open) return;
+    captureReturn();
+    dragging = true; pullMode = 'grip'; startY = e.clientY; dy = 0;
+    document.body.classList.add('jl-dragging');
+    root.style.transition = 'none';
+    try { pull.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  }
+  function gripMove(e) {
+    if (!dragging || pullMode !== 'grip') return;
+    dy = e.clientY - startY;
+    if (dy < 0) dy = 0;
+    move(dy);
+  }
+  function gripUp() {
+    if (!dragging || pullMode !== 'grip') return;
+    settleDown();
+  }
+  pull.addEventListener('pointerdown', gripDown);
+  pull.addEventListener('pointermove', gripMove);
+  pull.addEventListener('pointerup', gripUp);
+  pull.addEventListener('pointercancel', gripUp);
+
+  /* ---- 已经滚到顶，继续往下拽 ---- */
+  window.addEventListener('wheel', function (e) {
+    if (open) return;
+    /* 桌面改用按钮切换，禁用滚轮下拉（CSS藏了把手但手势还绑在window上） */
+    if (window.innerWidth > 640) return;
+    if (dragging && pullMode !== 'wheel') return;
+
+    if (e.deltaY < 0 && st() <= 0) {
+      acc += -e.deltaY;
+      if (acc < 90) return;
+      if (!dragging) {
+        captureReturn();
+        dragging = true; pullMode = 'wheel'; dy = 0;
+        document.body.classList.add('jl-dragging');
+        root.style.transition = 'none';
+      }
+      e.preventDefault();
+      dy += -e.deltaY;
+      move(dy);
+      clearTimeout(window.__jlWheelT);
+      window.__jlWheelT = setTimeout(function () {
+        if (pullMode === 'wheel') settleDown();
+      }, 170);
+    } else if (!dragging) {
+      acc = 0;
+    }
+  }, { passive: false });
+
+  /* ---- 触摸 ---- */
+  var tStart = 0, tPulling = false;
+  window.addEventListener('touchstart', function (e) {
+    if (open || e.touches.length !== 1) return;
+    tStart = e.touches[0].clientY; tPulling = false;
+  }, { passive: true });
+
+  window.addEventListener('touchmove', function (e) {
+    if (open || e.touches.length !== 1) return;
+    if (window.innerWidth <= 640) return; /* 手机改用 logo 按钮切换，不再下拉 */
+    var y = e.touches[0].clientY;
+    var d = y - tStart;
+    if (!tPulling) {
+      if (d > 26 && st() <= 0) {
+        captureReturn();
+        tPulling = true; dragging = true; pullMode = 'touch'; dy = 0;
+        document.body.classList.add('jl-dragging');
+        root.style.transition = 'none';
+      } else {
+        if (st() > 0) tStart = y;
+        return;
+      }
+    }
+    if (e.cancelable) e.preventDefault();
+    dy = d;
+    move(dy);
+  }, { passive: false });
+
+  window.addEventListener('touchend', function () {
+    if (pullMode === 'touch') settleDown();
+  }, { passive: true });
+
+  /* ---- 已经在 AI 台：往上推回去 ---- */
+  var upMode = false;
+  function aiGripDown(e) {
+    if (!open) return;
+    upMode = true; startY = e.clientY; upBase = 0;
+    root.style.transition = 'none';
+    try { grip.setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
+  }
+  function aiGripMove(e) {
+    if (!upMode) return;
+    var d = e.clientY - startY;
+    if (d > 0) d = 0;
+    if (d < -vh()) d = -vh();
+    upBase = d;
+    root.style.transform = 'translateY(' + (vh() + returnScroll + d) + 'px)';
+  }
+  function aiGripUp() {
+    if (!upMode) return;
+    upMode = false;
+    root.style.transition = 'transform .3s cubic-bezier(.22,.72,.2,1)';
+    if (upBase < -vh() * 0.18) {
+      unhide();
+      root.style.transform = '';
+      document.body.classList.remove('jl-ai-open');
+      open = false;
+      setTimeout(function () {
+        root.style.transition = '';
+        if (!open) show(false);
+      }, 340);
+      post('jl-shell-closed');
+      ai.setAttribute('aria-hidden','true');
+      restoreReturn();
+    } else {
+      root.style.transform = 'translateY(' + (vh() + returnScroll) + 'px)';
+      setTimeout(function () { root.style.transition = ''; }, 340);
+    }
+  }
+  grip.addEventListener('pointerdown', aiGripDown);
+  grip.addEventListener('pointermove', aiGripMove);
+  grip.addEventListener('pointerup', aiGripUp);
+  grip.addEventListener('pointercancel', aiGripUp);
+  grip.addEventListener('click', function () { if (open) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && open) close(); });
+
+  /* ---- 两层之间的消息 ---- */
+  function post(type, extra) {
+    var msg = { type: type };
+    if (extra) for (var k in extra) msg[k] = extra[k];
+    try { frame.contentWindow.postMessage(msg, ORIGIN); } catch (e) {}
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.source !== frame.contentWindow || (ORIGIN !== '*' && e.origin !== ORIGIN)) return;
+    var d = e.data || {};
+    if(d.type==='jl-toggle-ai') {if(open)close();else openNow();}
+    if(d.type==='jl-agent-result-ready' && !open) {
+      pull.classList.add('jl-unread');
+      pull.setAttribute('aria-label','AI 有新的回复，打开查看');
+    }
+    if (d.type === 'jl-close-ai') close();
+    if (d.type === 'jl-open-ticket' && d.number) {
+      close();
+      setTimeout(function () {
+        if (typeof window.__JL_OPEN_TICKET === 'function') window.__JL_OPEN_TICKET(d.number);
+      }, 340);
+    }
+  });
+
+  /* 账一变就通知那边重读（只拦写入动作，不动任何原有逻辑） */
+  var dirtyTimer = null;
+  function markDirty() {
+    clearTimeout(dirtyTimer);
+    dirtyTimer = setTimeout(function () { post('jl-account-changed'); }, 260);
+  }
+  try {
+    var rawSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) {
+      var r = rawSet.apply(this, arguments);
+      if (this === window.localStorage && typeof k === 'string' && k.indexOf('julong_demo_') === 0) markDirty();
+      return r;
+    };
+  } catch (e) {}
+
+  window.__JL_SHELL = {
+    open: openNow,
+    close: close,
+    refresh: markDirty,
+    context: currentContext,
+    get isOpen() { return open; }
+  };
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && open) close();
+  });
+
+  document.addEventListener('keydown',function(e){
+    if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.code==='Space'&&!e.repeat&&!e.isComposing){
+      e.preventDefault();if(open)close();else openNow();
+    }
+  });
+  pull.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openNow();}});
+  grip.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();close();}});
+  /* logo 按钮：点一下进 AI；AI 里的返回按钮：点一下回手动台 */
+  if (brand) brand.addEventListener('click', function () { openNow(true); });
+  var aiSwitch = $('jl-ai-switch');
+  if (aiSwitch) aiSwitch.addEventListener('click', function () { openNow(true); });
+  if (backBtn) backBtn.addEventListener('click', function () { close(true); });
+  var peek = document.querySelector('#jl-pull .peek');
+  if (peek) peek.addEventListener('click', function (e) { e.stopPropagation(); openNow(); });
+
+  window.addEventListener('resize', function () {
+    /* 只有宽度变化才重算（横竖屏切换）。手机键盘弹起只压缩高度、不改宽度，
+       此时保持打开时的推出距离，避免手动台顶栏漏回键盘上沿。 */
+    var w = window.innerWidth;
+    if (w !== lastWinW) { lastWinW = w; if (open) pushDown(); }
+  });
+})();
+
+</script>
+<style id="jl-clean-copy">
+.hint,.form-section-title .description,.form-foot small,.jl-filter-tip,
+.small-note,.word-hint,.compact-note,.ai-demo,.cap-off,.step span,
+.drawer-note,.env-print-tip,.env-dialog-foot span,.ops-note,.ops-hint,
+.output-note,.msg-label,.search-empty,.ledger-note,
+.top-note,.page-title p,.brand-meta,.wb-empty,.empty,.word-empty{display:none!important}
+</style>
+<script>
+(function(){
+  var i,els=document.querySelectorAll('input[placeholder],textarea[placeholder]');
+  for(i=0;i<els.length;i++)els[i].setAttribute('placeholder','');
+  var words=['按运单编号、收货人或到站搜索','Tab 切换','老客户可搜索带出','可搜姓名',
+    '运费按合同整票总额填写','输一个字就带出','历史货物自动带出','同样的件数不必再打',
+    '仅内部对账','输关键词带出历史','保存即自动建档','录单保存后自动更新',
+    '按发运日期与合作方分组','信封、对账单与发车清单按现有纸质样本','运单与发货清单均不含运费',
+    '封面只取运单字段','打印前请用普通纸','内容由已录入运单实时生成','按开单日期与合作方',
+    '预览按比例缩到可视宽度','只按运单编号认领','这些记录都挂在运单编号上',
+    '八项硬证据','绿=证据全齐','按实际信封尺寸设置','暂无可打印运单','请选择左侧运单预览封面'];
+  var all=document.querySelectorAll('body *');
+  for(i=0;i<all.length;i++){
+    var el=all[i]; if(el.children.length) continue;
+    var t=(el.textContent||'').trim(); if(!t) continue;
+    for(var j=0;j<words.length;j++){if(t.indexOf(words[j])===0){el.style.setProperty('display','none','important');break}}
+  }
+})();
+</script></body>
+</html>
