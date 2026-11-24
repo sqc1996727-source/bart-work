@@ -17,12 +17,12 @@ def recall(host, user, args):
         raise ValueError("query_or_event_id_required")
     scope = TOOL_MEMORY_SCOPE.get()
     store = host._v3_ai_service().store
-    params = [user["tenant_id"], user["id"], scope, "v3-%"]
+    prefix = host._V3_CONVERSATION_PREFIX
+    params = [user["tenant_id"], user["id"], scope, len(prefix), prefix]
     sql = """SELECT e.*,c.memory_scope FROM tool_events e JOIN conversations c
              ON e.conversation_id=c.id
              WHERE c.tenant_id=? AND c.principal_id=? AND c.memory_scope=?
-               AND c.id LIKE ? AND e.state='succeeded' AND e.result_json IS NOT NULL"""
-    params[3] = host._V3_CONVERSATION_PREFIX + "%"
+               AND substr(c.id,1,?)=? AND e.state='succeeded' AND e.result_json IS NOT NULL"""
     if event_id:
         sql += " AND e.id=?"
         params.append(event_id)
