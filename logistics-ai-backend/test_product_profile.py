@@ -17,11 +17,18 @@ class ProductProfileTests(unittest.TestCase):
                                           "modules": modules if modules is not None else list(p.MODULES)}), encoding="utf-8")
         return p.load(self.root, {"BOT_PROFILE":str(self.file), "DATA_DIR":str(data or self.root/"isolated")})
     def test_legacy_defaults(self):
-        a=p.load(self.root,{})
+        a=p.load(self.root,{"BOT_LEGACY_COMPAT":"1"})
         self.assertEqual(a["tenant_id"],p.LEGACY_ID)
         # macOS /tmp 是指向 /private/tmp 的软链；load() 按设计 resolve，
         # 断言也要 resolve，否则是环境差异不是产品缺陷。
         self.assertEqual(a["data_dir"],(self.root/"data").resolve())
+    def test_unconfigured_master_has_no_pilot_identity(self):
+        a=p.load(self.root,{})
+        self.assertEqual(a["tenant_id"],p.UNCONFIGURED_ID)
+        self.assertEqual(a["modules"],())
+        self.assertEqual(a["industry"],"general")
+        with sqlite3.connect(":memory:") as con, self.assertRaises(RuntimeError):
+            p.bind_database(con,a)
     def test_role_filtered_modules_and_enterprise_name(self):
         a=self.profile()
         self.assertEqual(p.public_profile(a,"owner_finance")["organization"]["name"],"示例企业 A")
@@ -51,7 +58,7 @@ class ProductProfileTests(unittest.TestCase):
         with sqlite3.connect(":memory:") as con:
             con.execute("CREATE TABLE users(id TEXT, tenant_id TEXT)")
             con.execute("INSERT INTO users VALUES('1','julong-test')")
-            p.bind_database(con,p.load(self.root,{}))
+            p.bind_database(con,p.load(self.root,{"BOT_LEGACY_COMPAT":"1"}))
             self.assertEqual(con.execute("SELECT tenant_id FROM users").fetchone()[0],"julong-test")
 
 if __name__ == "__main__":
