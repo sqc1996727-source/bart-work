@@ -1,0 +1,10 @@
+{
+  "tenant_id": "customer-alpha",
+  "name": "示例企业 A",
+  "industry": "logistics",
+  "modules": [
+    "transport",
+    "receipt",
+    "finance"
+  ]
+}
