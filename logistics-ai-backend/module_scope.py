@@ -24,10 +24,10 @@ LOGISTICS_MODULE_ROUTES = {
 }
 # 关掉财务模块时，状态接口也不能再吐出费用、票据、差异、月度汇总域。
 LOGISTICS_MODULE_STATE_KEYS = {
-    "transport": ("julong_demo_waybills_v2", "julong_demo_recipients_v2", "julong_demo_dispatch_v5", "julong_demo_delivery_v1"),
+    "transport": ("julong_demo_waybills_v2", "julong_demo_recipients_v2", "julong_demo_dispatch_v5"),
     "finance": ("julong_demo_month_v1", "julong_demo_fees_v1", "julong_demo_bills_v1",
                 "julong_demo_diffs_v1", "julong_demo_ai_v1"),
-    "receipt": ("julong_demo_receipts_v1",),
+    "receipt": ("julong_demo_receipts_v1", "julong_demo_delivery_v1"),
 }
 
 
@@ -56,8 +56,18 @@ def route_denied(profile, path):
 
 def project(profile, state):
     """Return a copy, never clear persisted data."""
-    return {key: "[]" if key in suppressed_keys(profile) else value
-            for key, value in state.items()}
+    hidden = suppressed_keys(profile)
+    result = {key: "[]" if key in hidden else value for key, value in state.items()}
+    if "finance" not in enabled(profile) and "julong_demo_waybills_v2" in result:
+        try:
+            rows = json.loads(result["julong_demo_waybills_v2"])
+            for row in rows:
+                for key in ("amount", "feeWarehouse", "freightTotal"):
+                    row.pop(key, None)
+            result["julong_demo_waybills_v2"] = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+        except (ValueError, TypeError, AttributeError):
+            result["julong_demo_waybills_v2"] = "[]"
+    return result
 
 
 def preserve_disabled(profile, old_state, parsed, merged):
