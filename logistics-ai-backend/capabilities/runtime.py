@@ -46,10 +46,6 @@ def checkpoint(stage,**details):
  if not ctx:return
  host,jid=ctx
  with host.db() as con:
-  row=con.execute('SELECT cancel_requested FROM agent_jobs WHERE id=?',(jid,)).fetchone()
-  if row and row['cancel_requested']:
-   from ai.service import AIServiceError
-   raise AIServiceError('REQUEST_CANCELLED','已停止后续处理，已完成的业务动作仍保留。')
   labels={'model_started':'正在处理','model_completed':'正在整理结果','tool_started':'正在核对资料','tool_completed':'资料已核对'}
   con.execute('BEGIN IMMEDIATE')
   row=con.execute('SELECT cancel_requested FROM agent_jobs WHERE id=?',(jid,)).fetchone()
@@ -163,7 +159,8 @@ def tick(host,now=None):
     user=dict(user_row) if user_row else None
     if not user or RANK[user['role']]<row['role_rank']:
      con.execute("UPDATE agent_followups SET state='permission_changed' WHERE id=?",(row['id'],));continue
-    if row['condition'] in {'paper_received','receipt_delivered'} and not host._module_enabled('receipt') or row['condition']=='run_routine' and not host._module_enabled('transport'):
+    if ((row['condition'] in {'paper_received','receipt_delivered'} and not host._module_enabled('receipt'))
+        or (row['condition']=='run_routine' and not host._module_enabled('transport'))):
      con.execute("UPDATE agent_followups SET state='permission_changed' WHERE id=?",(row['id'],));continue
     if row['condition']=='run_agent':
      _enqueue_scheduled_agent(host,con,row,user,now)
