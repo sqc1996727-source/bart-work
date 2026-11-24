@@ -24,6 +24,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 
 
 OBSERVER=contextvars.ContextVar('ai_observer',default=None)
+EXECUTION_JOB_ID=contextvars.ContextVar('ai_execution_job_id',default='')
 TOOL_MEMORY_SCOPE = contextvars.ContextVar("ai_tool_memory_scope", default="enterprise")
 def checkpoint(stage,**details):
     callback=OBSERVER.get()
@@ -250,6 +251,8 @@ class ConversationStore:
                 CREATE INDEX IF NOT EXISTS memories_scope_idx
                     ON memories(tenant_id,memory_scope,principal_id,active,updated_at);
             """)
+            if "job_id" not in {r[1] for r in db.execute("PRAGMA table_info(tool_events)")}:
+                db.execute("ALTER TABLE tool_events ADD COLUMN job_id TEXT NOT NULL DEFAULT ''")
         try:
             os.chmod(self.db_path, 0o600)
         except OSError:
@@ -344,8 +347,12 @@ class ConversationStore:
     def last_unanswered_user_turn(self, conversation_id: str, content: str) -> int | None:
         """Reuse the prior user-message ID when retrying a turn with no final assistant reply."""
         with self._connect() as db:
-            row=db.execute("SELECT id,role,content FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1",(conversation_id,)).fetchone()
+            row=db.execute("SELECT id,role,content,created_at FROM messages WHERE conversation_id=? ORDER BY id DESC LIMIT 1",(conversation_id,)).fetchone()
         if row and row["role"]=="user" and row["content"]==content:
+            with self._connect() as db:
+                cancelled = db.execute("SELECT 1 FROM tool_events WHERE conversation_id=? AND error_code IN ('REQUEST_CANCELLED','RECOVERY_CANCELLED_OR_UNKNOWN') AND updated_at>=? LIMIT 1", (conversation_id,row["created_at"])).fetchone()
+            if cancelled and EXECUTION_JOB_ID.get():
+                return None
             return int(row["id"])
         return None
 
@@ -420,7 +427,7 @@ class ConversationStore:
                 if existing["name"]!=name or existing["arguments_json"]!=args_json:
                     raise AIServiceError("TOOL_IDEMPOTENCY_COLLISION","工具幂等键冲突，操作已阻止。")
                 return existing
-            db.execute("INSERT OR IGNORE INTO tool_events(id,conversation_id,call_id,name,arguments_json,idempotency_key,state,created_at,updated_at) VALUES(?,?,?,?,?,?,'pending',?,?)", (str(uuid.uuid4()), conversation_id, call_id, name, args_json, idem, now, now))
+            db.execute("INSERT OR IGNORE INTO tool_events(id,conversation_id,call_id,name,arguments_json,idempotency_key,state,created_at,updated_at,job_id) VALUES(?,?,?,?,?,?,'pending',?,?,?)", (str(uuid.uuid4()), conversation_id, call_id, name, args_json, idem, now, now, EXECUTION_JOB_ID.get()))
             row = db.execute("SELECT * FROM tool_events WHERE conversation_id=? AND call_id=?", (conversation_id, call_id)).fetchone()
             if row["name"] != name or row["arguments_json"] != args_json:
                 raise AIServiceError("TOOL_CALL_ID_COLLISION", "工具调用标识冲突，操作已阻止。")
@@ -854,8 +861,14 @@ class AIService:
                     durable_key = hashlib.sha256(
                         f"ai-write-intent-v1\0{cid}\0{user_turn_id}\0{fingerprint}".encode("utf-8")
                     ).hexdigest() if fingerprint else None
-                    event = self.store.prepare_tool(cid, call_id, name, args, idempotency_key=durable_key)
                     checkpoint("tool_started",name=name)
+                    event = self.store.prepare_tool(cid, call_id, name, args, idempotency_key=durable_key)
+                    try:
+                        checkpoint("tool_started",name=name)
+                    except AIServiceError as exc:
+                        if exc.code == "REQUEST_CANCELLED" and event["state"] == "pending":
+                            self.store.fail_tool(event["id"], "REQUEST_CANCELLED")
+                        raise
                     result = self._execute_event(event, request)
                     checkpoint("tool_completed",name=name)
                 except AIServiceError as exc:
@@ -938,6 +951,10 @@ class AIService:
         if pending and not getattr(self.tool_executor, "supports_idempotency", False):
             raise AIServiceError("TOOL_RECOVERY_BLOCKED", "存在未完成工具事件，且执行器未声明幂等保护。")
         for event in pending:
+            recoverable = getattr(self.tool_executor, "recovery_permitted", None)
+            if recoverable and not recoverable(event, request):
+                self.store.fail_tool(event["id"], "RECOVERY_CANCELLED_OR_UNKNOWN")
+                continue
             if allowed_names is not None:
                 safe = getattr(self.tool_executor, "recovery_safe_tools", frozenset())
                 if event["name"] not in allowed_names or (event["state"] == "running" and event["name"] not in safe):
