@@ -20,6 +20,7 @@ def initialize(host):
     request_key TEXT NOT NULL,request_hash TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL,progress TEXT NOT NULL,
     result TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,cancel_requested INTEGER NOT NULL DEFAULT 0,
     UNIQUE(tenant_id,owner_id,request_key));
+  CREATE TABLE IF NOT EXISTS agent_job_checkpoints(job_id TEXT PRIMARY KEY,stage TEXT NOT NULL,tool_started INTEGER NOT NULL DEFAULT 0,recovery_count INTEGER NOT NULL DEFAULT 0,updated_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS agent_preferences(owner_id TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,role_rank INTEGER NOT NULL,
     active INTEGER NOT NULL DEFAULT 1,updated_at TEXT NOT NULL,PRIMARY KEY(owner_id,key));
   CREATE TABLE IF NOT EXISTS agent_followups(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,owner_id TEXT NOT NULL,role_rank INTEGER NOT NULL,
@@ -37,6 +38,8 @@ def initialize(host):
   # 循环任务引擎扩展：schedule=调度表达式(interval:N/daily:HH:MM/weekdays:HH:MM)，routine_kind=到点要干的活类型
   if 'schedule' not in {r['name'] for r in con.execute('PRAGMA table_info(agent_followups)')}:con.execute('ALTER TABLE agent_followups ADD COLUMN schedule TEXT')
   if 'routine_kind' not in {r['name'] for r in con.execute('PRAGMA table_info(agent_followups)')}:con.execute('ALTER TABLE agent_followups ADD COLUMN routine_kind TEXT')
+  if 'agent_instruction' not in {r['name'] for r in con.execute('PRAGMA table_info(agent_followups)')}:con.execute('ALTER TABLE agent_followups ADD COLUMN agent_instruction TEXT')
+  if 'agent_scope' not in {r['name'] for r in con.execute('PRAGMA table_info(agent_followups)')}:con.execute('ALTER TABLE agent_followups ADD COLUMN agent_scope TEXT')
 
 def checkpoint(stage,**details):
  ctx=CURRENT_JOB.get()
@@ -48,7 +51,14 @@ def checkpoint(stage,**details):
    from ai.service import AIServiceError
    raise AIServiceError('REQUEST_CANCELLED','已停止后续处理，已完成的业务动作仍保留。')
   labels={'model_started':'正在处理','model_completed':'正在整理结果','tool_started':'正在核对资料','tool_completed':'资料已核对'}
-  con.execute('UPDATE agent_jobs SET progress=?,updated_at=? WHERE id=?',(labels.get(stage,'正在处理'),host.now_iso(),jid))
+  con.execute('BEGIN IMMEDIATE')
+  row=con.execute('SELECT cancel_requested FROM agent_jobs WHERE id=?',(jid,)).fetchone()
+  if not row or row['cancel_requested']:
+   from ai.service import AIServiceError
+   raise AIServiceError('REQUEST_CANCELLED','已停止后续处理，已完成的业务动作仍保留。')
+  now=host.now_iso()
+  con.execute("INSERT INTO agent_job_checkpoints(job_id,stage,tool_started,updated_at) VALUES(?,?,?,?) ON CONFLICT(job_id) DO UPDATE SET stage=excluded.stage,tool_started=max(agent_job_checkpoints.tool_started,excluded.tool_started),updated_at=excluded.updated_at",(jid,stage,int(stage=='tool_started'),now))
+  con.execute('UPDATE agent_jobs SET progress=?,updated_at=? WHERE id=?',(labels.get(stage,'正在处理'),now,jid))
 
 def get_user(host,uid,tenant):
  with host.db() as con:row=con.execute('SELECT * FROM users WHERE id=? AND tenant_id=? AND active=1',(uid,tenant)).fetchone()
@@ -64,7 +74,7 @@ def job_view(host,user,jid):
  return {'id':row['id'],'state':row['state'],'progress':row['progress'],'result':result,'updated_at':row['updated_at'],'cancel_requested':bool(row['cancel_requested']),'conversation_id':payload.get('conversation_id'),'title':title}
 
 def submit(host,user,payload,key):
- if not key or len(key)>128:raise ValueError('request_key_required')
+ if not key or len(key)>128 or key.startswith('scheduled:'):raise ValueError('request_key_required')
  if not isinstance(payload,dict) or set(payload)-{'conversation_id','text','memory_scope','attachment_ids'}:raise ValueError('invalid_request')
  if not isinstance(payload.get('text'),str) or len(payload['text'])>8000:raise ValueError('invalid_message')
  ids=payload.get('attachment_ids',[])
@@ -113,18 +123,21 @@ def run_one(host):
       AND (json_extract(r.payload,'$.conversation_id')=json_extract(q.payload,'$.conversation_id') OR (r.tenant_id=q.tenant_id AND r.owner_id=q.owner_id)))
     ORDER BY COALESCE((SELECT max(h.updated_at) FROM agent_jobs h WHERE h.tenant_id=q.tenant_id AND h.owner_id=q.owner_id AND h.state!='queued'),''),q.created_at,q.rowid LIMIT 1""").fetchone()
   if not row:return False
-  con.execute("UPDATE agent_jobs SET state='running',progress='正在处理',updated_at=? WHERE id=?",(host.now_iso(),row['id']));con.commit()
+  now=host.now_iso()
+  con.execute("UPDATE agent_jobs SET state='running',progress='正在处理',updated_at=? WHERE id=?",(now,row['id']))
+  con.execute("INSERT INTO agent_job_checkpoints(job_id,stage,tool_started,updated_at) VALUES(?,'claimed',0,?) ON CONFLICT(job_id) DO UPDATE SET stage='claimed',tool_started=0,updated_at=excluded.updated_at",(row['id'],now));con.commit()
  user=get_user(host,row['owner_id'],row['tenant_id']);token=CURRENT_JOB.set((host,row['id']))
  from ai.service import OBSERVER
  observer_token=OBSERVER.set(checkpoint)
  try:
-  if not user or RANK[user['role']]<row['role_rank']:status,result=403,{'error':'permission_changed','message':'账号权限已变化，请重新交办。'}
+  if not user or RANK[user['role']]<row['role_rank'] or (row['request_key'].startswith('scheduled:') and RANK[user['role']]!=row['role_rank']):status,result=403,{'error':'permission_changed','message':'账号权限已变化，请重新交办。'}
   else:status,result=host._v3_chat(user,json.loads(row['payload']))
   state='succeeded' if status==200 else 'cancelled' if result.get('error')=='request_cancelled' else 'failed'
   with host.db() as con:
    con.execute('UPDATE agent_jobs SET state=?,progress=?,result=?,updated_at=? WHERE id=?',(state,'已完成' if state=='succeeded' else '已停止' if state=='cancelled' else '这次未完成',json.dumps({'status':status,**result},ensure_ascii=False),host.now_iso(),row['id']))
-   if state=='succeeded':
-    con.execute('INSERT OR IGNORE INTO agent_notifications VALUES(?,?,?,?,?,?,?,?,0)',(secrets.token_urlsafe(16),row['tenant_id'],row['owner_id'],row['role_rank'],'job:'+row['id'],json.loads(row['payload'])['conversation_id'],'交办的事情已处理完，点开接着看。',host.now_iso()))
+   if state in {'succeeded','failed'}:
+    notice='交办的事情已处理完，点开接着看。' if state=='succeeded' else '工作未完成，已保留实际执行记录，请查看后续事项。'
+    con.execute('INSERT OR IGNORE INTO agent_notifications VALUES(?,?,?,?,?,?,?,?,0)',(secrets.token_urlsafe(16),row['tenant_id'],row['owner_id'],row['role_rank'],'job:'+row['id'],json.loads(row['payload'])['conversation_id'],notice,host.now_iso()))
  except Exception:
   with host.db() as con:con.execute("UPDATE agent_jobs SET state='failed',progress='处理遇到问题，原资料仍保留',updated_at=? WHERE id=?",(host.now_iso(),row['id']))
  finally:CURRENT_JOB.reset(token);OBSERVER.reset(observer_token)
@@ -144,6 +157,9 @@ def tick(host,now=None):
     user=dict(user_row) if user_row else None
     if not user or RANK[user['role']]<row['role_rank']:
      con.execute("UPDATE agent_followups SET state='permission_changed' WHERE id=?",(row['id'],));continue
+    if row['condition']=='run_agent':
+     _enqueue_scheduled_agent(host,con,row,user,now)
+     continue
     ready=row['condition']=='remind'
     if row['condition'] in {'paper_received','receipt_delivered'}:
      state=host._decode_state(con.execute('SELECT payload FROM work_state WHERE id=1').fetchone()['payload'])
@@ -179,6 +195,44 @@ def tick(host,now=None):
    import logging
    logging.getLogger(__name__).exception('Followup processing failed for %s',selected['id'])
 
+def recover_interrupted(host):
+ """Requeue only work that provably never reached a tool or final-answer phase."""
+ with host.db() as con:
+  con.execute('BEGIN IMMEDIATE')
+  jobs=con.execute("SELECT j.*,c.stage,c.tool_started,c.recovery_count FROM agent_jobs j LEFT JOIN agent_job_checkpoints c ON c.job_id=j.id WHERE j.state='running'").fetchall()
+  for row in jobs:
+   safe=not row['cancel_requested'] and row['stage'] in {'claimed','model_started'} and row['tool_started']==0 and row['recovery_count']<2
+   state='queued' if safe else 'cancelled' if row['cancel_requested'] else 'interrupted'
+   progress='服务恢复，等待继续处理' if safe else '已停止' if state=='cancelled' else '服务重启，原任务与已完成操作保留；请核查后继续'
+   con.execute("UPDATE agent_jobs SET state=?,progress=?,updated_at=? WHERE id=?",(state,progress,host.now_iso(),row['id']))
+   if safe:con.execute("UPDATE agent_job_checkpoints SET recovery_count=recovery_count+1 WHERE job_id=?",(row['id'],))
+   else:
+    con.execute('INSERT OR IGNORE INTO agent_notifications VALUES(?,?,?,?,?,?,?,?,0)',(secrets.token_urlsafe(16),row['tenant_id'],row['owner_id'],row['role_rank'],'job:'+row['id'],json.loads(row['payload'])['conversation_id'],progress,host.now_iso()))
+   actor=con.execute("SELECT * FROM users WHERE id=? AND tenant_id=?",(row['owner_id'],row['tenant_id'])).fetchone()
+   if actor:host.audit(con,actor,'agent.job.recovery','agent_job',row['id'],{'state':state,'stage':row['stage']})
+
+def _enqueue_scheduled_agent(host,con,row,user,now):
+ """Insert a due job and advance the schedule in the same SQLite transaction."""
+ if RANK[user['role']]!=row['role_rank'] or not row['conversation_id'] or not row['agent_instruction'] or row['agent_scope'] not in {'enterprise','personal'}:
+  con.execute("UPDATE agent_followups SET state='permission_changed' WHERE id=?",(row['id'],));return
+ slot=datetime.fromisoformat(row['due_at'].replace('Z','+00:00')).astimezone(timezone.utc).isoformat()
+ prefix='scheduled:'+row['id']+':'
+ request_key=prefix+slot
+ if con.execute("SELECT 1 FROM agent_jobs WHERE owner_id=? AND tenant_id=? AND request_key LIKE ? AND state IN ('queued','running')",(row['owner_id'],row['tenant_id'],prefix+'%')).fetchone():
+  nxt=parse_schedule(row['schedule'],now)
+  if nxt:con.execute("UPDATE agent_followups SET due_at=? WHERE id=?",(nxt.astimezone(timezone.utc).isoformat(),row['id']))
+  else:con.execute("UPDATE agent_followups SET state='done' WHERE id=?",(row['id'],))
+  return
+ pending=con.execute("SELECT count(*) FROM agent_jobs WHERE owner_id=? AND tenant_id=? AND state IN ('queued','running')",(row['owner_id'],row['tenant_id'])).fetchone()[0]
+ if pending>=20:return
+ text='执行已安排的工作（当前时间 '+now.isoformat()+'）：\n'+row['agent_instruction']+'\n只执行原交办目标范围内的操作；不要创建新的定时任务。'
+ payload={'conversation_id':row['conversation_id'],'text':text,'memory_scope':row['agent_scope'],'attachment_ids':[]}
+ digest=hashlib.sha256(json.dumps(payload,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+ at=host.now_iso()
+ con.execute("INSERT OR IGNORE INTO agent_jobs VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0)",(secrets.token_urlsafe(18),row['tenant_id'],row['owner_id'],row['role_rank'],request_key,digest,json.dumps(payload,ensure_ascii=False),'queued','定时工作已排队',None,at,at))
+ nxt=parse_schedule(row['schedule'],now)
+ con.execute("UPDATE agent_followups SET state=?,due_at=? WHERE id=?",('pending' if nxt else 'done',nxt.astimezone(timezone.utc).isoformat() if nxt else row['due_at'],row['id']))
+
 def start(host):
  key=str(host.DB_PATH)
  with _LOCK:
@@ -195,19 +249,7 @@ def start(host):
         fcntl.flock(lock_file,fcntl.LOCK_EX|fcntl.LOCK_NB);break
        except BlockingIOError:stop_event.wait(.5)
       else:return
-      # Never replay an interrupted model run; a prior write may already exist.
-      with host.db() as con:
-       interrupted=con.execute("SELECT id,owner_id,tenant_id,request_key FROM agent_jobs WHERE state='running'").fetchall()
-       con.execute("UPDATE agent_jobs SET state='interrupted',progress='服务重启，原任务和已完成操作已保留',updated_at=? WHERE state='running'",(host.now_iso(),))
-       # 持久化中断痕迹：audit 表不随任务表清理，供事后追溯。
-       for job in interrupted:
-        try:
-         owner=con.execute("SELECT id,name,role,tenant_id FROM users WHERE id=?",(job['owner_id'],)).fetchone()
-         if not owner: continue
-         actor={'id':owner['id'],'name':owner['name'],'role':owner['role'],'tenant_id':owner['tenant_id']}
-         host.audit(con, actor, 'agent.job.interrupted', 'agent_job', job['id'],
-                    {'reason':'worker_restart','request_key':job['request_key']})
-        except Exception: pass
+      recover_interrupted(host)
       with ThreadPoolExecutor(max_workers=4,thread_name_prefix='julong-job') as pool:
        pending=[];last_team_tick=0
        while not stop_event.is_set():
@@ -408,7 +450,7 @@ def schedule(host,user,args,key):
  condition=args.get('condition','remind');number=str(args.get('waybill_number',''));tid=str(args.get('task_id',''));minutes=int(args.get('every_minutes',15))
  sched=str(args.get('schedule','') or '').strip()
  routine_kind=str(args.get('routine_kind','') or '').strip()
- if condition not in {'remind','paper_received','receipt_delivered','task_done','run_routine'} or not 1<=minutes<=1440:raise ValueError()
+ if condition not in {'remind','paper_received','receipt_delivered','task_done','run_routine','run_agent'} or not 1<=minutes<=1440:raise ValueError()
  if condition=='run_routine':
   # run_routine 到点是「干活」不是「发提醒」；routine_kind 目前只支持 daily_scan（每日扫账）。
   if routine_kind not in {'daily_scan'}:raise ValueError()
@@ -424,9 +466,20 @@ def schedule(host,user,args,key):
  if ctx and not cid:
   with host.db() as con:row=con.execute('SELECT payload FROM agent_jobs WHERE id=?',(ctx[1],)).fetchone()
   if row:cid=json.loads(row['payload']).get('conversation_id')
+ instruction=None;agent_scope=None
+ if condition=='run_agent':
+  instruction=args.get('agent_instruction')
+  if not isinstance(instruction,str) or not instruction.strip() or len(instruction)>6000 or not cid:raise ValueError('agent_instruction_and_conversation_required')
+  if sched and parse_schedule(sched,due) is None:raise ValueError('invalid_schedule')
+  if ctx:
+   with host.db() as con:job=con.execute("SELECT request_key FROM agent_jobs WHERE id=?",(ctx[1],)).fetchone()
+   if job and job['request_key'].startswith('scheduled:'):raise PermissionError('scheduled_job_cannot_schedule')
+  conversation=host._v3_ai_service().store.get_conversation(tenant_id=user['tenant_id'],principal_id=user['id'],conversation_id=cid,limit=1)
+  if not conversation or not host.integrity.conversation_allowed(host,user,cid):raise LookupError()
+  agent_scope=conversation['memory_scope']
  fid=hashlib.sha256((user['tenant_id']+'|'+user['id']+'|'+key).encode()).hexdigest()[:32]
  with host.db() as con:
-  con.execute('INSERT OR IGNORE INTO agent_followups(id,tenant_id,owner_id,role_rank,title,due_at,condition,waybill_number,task_id,every_minutes,conversation_id,state,created_at,schedule,routine_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,user['tenant_id'],user['id'],RANK[user['role']],title,due.astimezone(timezone.utc).isoformat(),condition,number,tid,minutes,cid,'pending',host.now_iso(),sched or None,routine_kind or None))
+  con.execute('INSERT OR IGNORE INTO agent_followups(id,tenant_id,owner_id,role_rank,title,due_at,condition,waybill_number,task_id,every_minutes,conversation_id,state,created_at,schedule,routine_kind,agent_instruction,agent_scope) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(fid,user['tenant_id'],user['id'],RANK[user['role']],title,due.astimezone(timezone.utc).isoformat(),condition,number,tid,minutes,cid,'pending',host.now_iso(),sched or None,routine_kind or None,instruction,agent_scope))
  return {'id':fid,'title':title,'due_at':due.isoformat(),'state':'pending','condition':condition,'schedule':sched or None,'routine_kind':routine_kind or None}
 
 
@@ -445,7 +498,7 @@ def followups_list(host,user):
 def followups_manage(host,user,args):
  action=str(args.get('action',''))
  if action=='create':
-  if set(args)-{'action','title','due_at','condition','waybill_number','task_id','every_minutes','schedule','routine_kind','request_key'}:raise ValueError()
+  if set(args)-{'action','title','due_at','condition','waybill_number','task_id','every_minutes','schedule','routine_kind','agent_instruction','request_key'}:raise ValueError()
   key=str(args.get('request_key',''))
   if not key or len(key)>128:raise ValueError()
   return schedule(host,user,{k:v for k,v in args.items() if k not in {'action','request_key'}},key)
