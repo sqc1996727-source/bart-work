@@ -59,6 +59,12 @@ def save(host,user,args,conversation_id):
    if row and (row['kind']=='rule' or (scope=='company' and user['role']=='dispatcher' and row['created_by']!=user['id'])):
     raise PermissionError('formal_memory_requires_explicit_version')
    expected=row['version'] if row else 0
+   if row:
+    # Repeated learning must not create endless versions or silently reduce visibility rank.
+    rank=max(rank,row['role_rank'])
+    latest=con.execute("SELECT * FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=? AND version=?",(user['tenant_id'],owner,scope,topic,expected)).fetchone()
+    if latest and latest['active'] and all(latest[k]==v for k,v in {'kind':kind,'title':title,'content':content,'applies_to':applies,'valid_from':start,'valid_until':end or None,'role_rank':rank}.items()):
+     return {'id':latest['id'],'topic':topic,'version':expected,'scope':scope,'kind':kind,'note':True,'unchanged':True}
   else:
    row=con.execute('SELECT coalesce(max(version),0) FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=?',(user['tenant_id'],owner,scope,topic)).fetchone()
    if row[0]!=expected:raise ValueError('version_conflict')
@@ -97,7 +103,10 @@ def search(host,user,query):
  today=date.today().isoformat();rank=files.RANK[user['role']];items=[]
  def add(item,text):
   if user['role']!='owner_finance' and sensitive(host,text):return
+  from ai.agent_policy import query_terms,relevance
   score=fuzz.partial_ratio(query.casefold(),text.casefold())
+  lexical=relevance(query_terms(query),text)
+  if lexical>=2:score=max(score,min(95,55+lexical))
   if score>=55:items.append({**item,'match_score':round(score,1),'candidate_only':True})
  with host.db() as con:
   actor=con.execute('SELECT role FROM users WHERE id=? AND tenant_id=? AND active=1',(user['id'],user['tenant_id'])).fetchone()
