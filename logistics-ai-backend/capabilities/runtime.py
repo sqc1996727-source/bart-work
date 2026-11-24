@@ -60,7 +60,7 @@ def job_view(host,user,jid):
  result=json.loads(row['result']) if row['result'] else None
  payload=json.loads(row['payload'])
  title=str(payload.get('text',''))[:100]
- if user['role']=='employee' and host._v3_output_has_explicit_price(title):title='工作任务'
+ if user['role']=='employee' and getattr(host, '_v3_output_has_explicit_price', lambda _text: True)(title):title='工作任务'
  return {'id':row['id'],'state':row['state'],'progress':row['progress'],'result':result,'updated_at':row['updated_at'],'cancel_requested':bool(row['cancel_requested']),'conversation_id':payload.get('conversation_id'),'title':title}
 
 def submit(host,user,payload,key):
