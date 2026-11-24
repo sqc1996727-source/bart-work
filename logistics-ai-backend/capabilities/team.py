@@ -32,6 +32,7 @@ def allowed(host,user,ticket):
  with host.db() as con:return access(con,user,ticket)
 
 def ticket(con,host,number):
+ if not host._module_enabled('transport'):return None
  row=con.execute('SELECT payload FROM work_state WHERE id=1').fetchone()
  return next((x for x in json.loads(host._decode_state(row['payload'])[host.STATE_KEYS[0]]) if isinstance(x,dict) and str(x.get('number'))==number),None)
 
