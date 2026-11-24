@@ -249,6 +249,9 @@ def _run_in_transaction(host, user, *, limit, con):
     rev = state_row["rev"]
     # 模块没启用时，扫账不能把该模块的业务域读出来，否则模块开关形同虚设。
     enabled = getattr(host, "_module_enabled", lambda module: True)
+    if not enabled("transport"):
+        return {"routine_candidates": [], "total": 0, "by_routine": {}, "state_rev": rev,
+                "coverage": "transport_module_disabled", "source_status": {}, "note": "运输业务未启用。"}
     finance_on = bool(enabled("finance"))
     receipt_on = bool(enabled("receipt"))
     relevant = ["julong_demo_waybills_v2"] + (["julong_demo_receipts_v1"] if receipt_on else [])
@@ -417,6 +420,9 @@ def get_bot_state(host, user, *, bot_role="", include_done=False):
 
 def get_scan(host, user, scan_id):
     """Return one historical scan, scoped again against present-day access."""
+    enabled = getattr(host, "_module_enabled", lambda module: True)
+    if not enabled("transport"):
+        return None
     with host.db() as con:
         con.execute("BEGIN")
         if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='routine_scans'").fetchone():
@@ -443,6 +449,10 @@ def get_scan(host, user, scan_id):
         visible = []
         for c in candidates:
             if not isinstance(c, dict) or str(c.get("waybill_number", "")).strip() not in permitted:
+                continue
+            if c.get("routine") == "回单催办" and not enabled("receipt"):
+                continue
+            if c.get("routine") != "回单催办" and not enabled("finance"):
                 continue
             if user.get("role") == "employee" and c.get("routine") != "回单催办":
                 continue
