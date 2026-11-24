@@ -364,6 +364,21 @@ class ConversationStore:
         with self._connect() as db:
             return db.execute("SELECT id,name,arguments_json,result_json,state,error_code FROM tool_events WHERE conversation_id=? ORDER BY created_at", (conversation_id,)).fetchall()
 
+    def recent_events(self, conversation_id: str, allowed_names, limit: int = 30) -> list[sqlite3.Row]:
+        """Load only the authorized recent receipts needed by the model."""
+        names = sorted(set(allowed_names))
+        if not names:
+            return []
+        marks = ",".join("?" for _ in names)
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT id,name,result_json,state,error_code FROM tool_events "
+                "WHERE conversation_id=? AND name IN (" + marks + ") "
+                "ORDER BY created_at DESC,id DESC LIMIT ?",
+                (conversation_id, *names, limit),
+            ).fetchall()
+        return list(reversed(rows))
+
     def save_memory(
         self, tenant_id: str, principal_id: str, memory_scope: str, content: str,
         *, source: str, memory_id: str | None = None,
@@ -708,7 +723,7 @@ class AIService:
             self._recover_tools(cid, request, allowed_names=allowed_names if policy else None)
         except AIServiceError as exc:
             raise bind(exc)
-        tool_history = [row for row in self.store.completed_events(cid) if row["name"] in allowed_names][-30:]
+        tool_history = self.store.recent_events(cid, allowed_names)
         try:
             business_evidence = self.context_provider.retrieve(
                 message, tenant_id=request.tenant_id, principal_id=request.principal_id,
