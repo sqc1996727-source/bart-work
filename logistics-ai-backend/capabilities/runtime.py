@@ -359,21 +359,71 @@ def execute(host,user,name,args,key):
  except (ValueError,TypeError,KeyError,TimeoutError,subprocess.TimeoutExpired):return {'error':'invalid_request_or_file_unavailable'}
 
 def find_records(host,user,args):
+ """Search scoped business records, authorized file names, and safe own history.
+ Full file contents remain behind read_files and its authorization checks.
+ """
  from rapidfuzz import fuzz
+ from ai.agent_policy import query_terms,relevance
+ from ai.service import TOOL_MEMORY_SCOPE
  query=str(args['query']).strip()[:200];kind=args.get('kind','all');limit=int(args.get('limit',10))
  if not query or kind not in {'all','waybills','files','conversations'} or not 1<=limit<=20:raise ValueError()
+ terms=query_terms(query)
  candidates=[]
+ def score(text):
+  lexical=relevance(terms,text)
+  fuzzy=round(fuzz.partial_ratio(query.casefold(),text.casefold()),1)
+  return max(fuzzy,min(100,50+lexical)) if lexical else fuzzy
+ def safe(text):
+  # Historical unstructured material is not a route around finance boundaries.
+  return not workplace_memory.sensitive(host,text)
  if kind in {'all','waybills'}:
   for raw in host._v3_raw_rows(0):
    if not team.allowed(host,user,raw):continue
    item=host.V3Context._pick(raw,host.V3Context._WAYBILL_FIELDS);text=json.dumps(item,ensure_ascii=False)
-   candidates.append({'kind':'waybill','id':raw.get('number'),'text':text})
- # Arbitrary historic files and conversations have no reliable field-level
- # classification; searching their text or names can disclose freight prices.
- # Restrict this global search to projected waybills until indexed safely.
- for c in candidates:c['score']=round(fuzz.partial_ratio(query,c['text']),1)
+   match=score(text)
+   if match>=35:candidates.append({'kind':'waybill','id':raw.get('number'),'text':text,'score':match})
+ if kind in {'all','files'}:
+  # Search metadata first; never parse or reveal unauthorized documents.
+  with host.db() as con:
+   rows=con.execute('SELECT id,filename FROM agent_files WHERE tenant_id=? AND role_rank<=? ORDER BY created_at DESC',(user['tenant_id'],RANK[user['role']])).fetchall()
+  ranked=sorted(((score(r['filename']),r) for r in rows if safe(r['filename'])),key=lambda item:item[0],reverse=True)
+  count=0
+  for match,row in ranked:
+   if match<45 or count>=limit:break
+   try:doc=files.public(files.authorized(host,user,row['id']))
+   except LookupError:continue
+   candidates.append({'kind':'file','id':doc['id'],'text':doc['filename'],'score':match,'file_id':doc['id']})
+   count+=1
+ if kind in {'all','conversations'} and terms:
+  store=host._v3_ai_service().store
+  current=CURRENT_CONVERSATION.get() or ''
+  scope=TOOL_MEMORY_SCOPE.get()
+  # Use only this principal's current-format conversation scope. The raw
+  # legacy history and other principals never enter the candidate search.
+  with store._connect() as con:
+   rows=con.execute("""SELECT m.id,m.conversation_id,m.role,m.content,m.created_at FROM messages m
+       JOIN conversations c ON c.id=m.conversation_id
+       WHERE c.tenant_id=? AND c.principal_id=? AND c.memory_scope=? AND c.id!=?
+       AND substr(c.id,1,?)=? AND m.role IN ('user','assistant')
+       ORDER BY m.id DESC""",(user['tenant_id'],user['id'],scope,current,len(host._V3_CONVERSATION_PREFIX),host._V3_CONVERSATION_PREFIX)).fetchall()
+  ranked=[]
+  for row in rows:
+   content=str(row['content'])
+   if not safe(content) or relevance(terms,content)<2:continue
+   ranked.append((score(content),row))
+  ranked.sort(key=lambda item:item[0],reverse=True)
+  checked={};seen=set()
+  for match,row in ranked:
+   cid=row['conversation_id']
+   if cid in seen:continue
+   if cid not in checked:checked[cid]=host.integrity.conversation_allowed(host,user,cid)
+   if not checked[cid]:continue
+   seen.add(cid)
+   candidates.append({'kind':'conversation','id':cid,'message_id':row['id'],'role':row['role'],'text':row['content'][:600],'score':match,'created_at':row['created_at']})
+   if len(seen)>=limit:break
  candidates.sort(key=lambda c:c['score'],reverse=True)
- return {'items':[c for c in candidates if c['score']>=35][:limit],'candidate_only':True,'coverage':{'waybills':'current_authorized_records','files':'unavailable_unclassified','conversations':'unavailable_unclassified'}}
+ return {'items':candidates[:limit],'candidate_only':True,'coverage':{'waybills':'current_authorized_records','files':'authorized_nonsensitive_filenames_only','conversations':'own_current_scope_nonsensitive_history_only'},'note':'匹配仅是候选；历史原话和文件名不是当前业务事实，需重新核查。'}
+
 
 def preference_action(host,user,args):
  action=args['action'];key=str(args.get('key','')).strip()[:60];value=str(args.get('value','')).strip()
@@ -463,6 +513,9 @@ def schedule(host,user,args,key):
  title=str(args['title']).strip()[:200]
  if not title:raise ValueError()
  ctx=CURRENT_JOB.get();cid=CURRENT_CONVERSATION.get()
+ if ctx:
+  with host.db() as con:current_job=con.execute("SELECT request_key FROM agent_jobs WHERE id=?",(ctx[1],)).fetchone()
+  if current_job and current_job['request_key'].startswith('scheduled:'):raise PermissionError('scheduled_job_cannot_schedule')
  if ctx and not cid:
   with host.db() as con:row=con.execute('SELECT payload FROM agent_jobs WHERE id=?',(ctx[1],)).fetchone()
   if row:cid=json.loads(row['payload']).get('conversation_id')
@@ -471,9 +524,6 @@ def schedule(host,user,args,key):
   instruction=args.get('agent_instruction')
   if not isinstance(instruction,str) or not instruction.strip() or len(instruction)>6000 or not cid:raise ValueError('agent_instruction_and_conversation_required')
   if sched and parse_schedule(sched,due) is None:raise ValueError('invalid_schedule')
-  if ctx:
-   with host.db() as con:job=con.execute("SELECT request_key FROM agent_jobs WHERE id=?",(ctx[1],)).fetchone()
-   if job and job['request_key'].startswith('scheduled:'):raise PermissionError('scheduled_job_cannot_schedule')
   conversation=host._v3_ai_service().store.get_conversation(tenant_id=user['tenant_id'],principal_id=user['id'],conversation_id=cid,limit=1)
   if not conversation or not host.integrity.conversation_allowed(host,user,cid):raise LookupError()
   agent_scope=conversation['memory_scope']
@@ -529,6 +579,8 @@ def followups_manage(host,user,args):
    con.execute('UPDATE agent_followups SET title=?,due_at=?,schedule=? WHERE id=?',(title,due.astimezone(timezone.utc).isoformat(),sched or None,fid))
    return {'id':fid,'action':action,'ok':True}
   con.execute('UPDATE agent_followups SET state=? WHERE id=?',(state,fid))
+  if row['condition']=='run_agent' and state in {'paused','cancelled'}:
+   con.execute("UPDATE agent_jobs SET state='cancelled',cancel_requested=1,progress='定时工作已停止',updated_at=? WHERE tenant_id=? AND owner_id=? AND request_key LIKE ? AND state='queued'",(host.now_iso(),user['tenant_id'],user['id'],'scheduled:'+fid+':%'))
  return {'id':fid,'action':action,'ok':True}
 
 
