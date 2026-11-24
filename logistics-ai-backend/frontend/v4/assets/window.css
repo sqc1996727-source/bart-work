@@ -1,0 +1,133 @@
+/* 视觉基准：ChatGPT 设计稿 03.1（bart-work/logistics-ai-workspace）
+   外壳、材质、字体、间距一律照原稿，不得自行改动。 */
+*{box-sizing:border-box}
+body{margin:0;color:#e9e9ef;font:12px -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+.desktop{background:radial-gradient(ellipse at 24% 5%,#c8cfde,#9ba5b8 48%,#606b81);padding:24px 14px 28px;border-radius:9px}
+.window{display:flex;gap:8px;padding:9px;background:#0c0c10;border:1px solid #62646f;border-radius:15px;box-shadow:0 25px 40px -16px #152039b0;min-height:565px}
+.left{width:136px;flex-shrink:0;padding:12px 7px;display:flex;flex-direction:column;gap:5px}
+.brand{display:flex;align-items:center;gap:8px;margin:0 0 24px;font-size:13px;font-weight:550;letter-spacing:.3px}
+.logo{width:24px;height:24px;border:1px solid #9498ad;border-radius:7px;display:grid;place-items:center;background:linear-gradient(145deg,#777e90,#222633 65%);box-shadow:inset 0 1px 1px #ffffff55}
+.logo svg{width:15px;height:15px}
+.left button{display:flex;gap:8px;align-items:center;text-align:left;border:0;background:none;padding:9px 7px;border-radius:6px;font-size:11px;color:#92939e}
+.left button:hover,.left button.active{background:#22232d;color:#eeeef3}
+.left button.new{border:1px solid #3a3a47;background:linear-gradient(#292933,#191a22);color:#e6e7ee;margin-bottom:12px;box-shadow:inset 0 1px 0 #ffffff12}
+.navlabel{color:#656773;font-size:10px;padding:15px 7px 4px}
+.left svg,.right svg,.composer svg{width:15px;height:15px;flex-shrink:0}
+.profile{margin-top:auto;padding-top:12px;border-top:1px solid #282831;display:flex;align-items:center;gap:8px}
+.avatar{width:26px;height:26px;border-radius:7px;background:linear-gradient(145deg,#505666,#222632);display:grid;place-items:center;font-size:11px}
+.profile select{border:0;background:#101016;color:#b8bac5;font-size:11px;max-width:91px}
+.center{min-width:0;flex:1;display:flex;flex-direction:column}
+.top{height:46px;display:flex;align-items:center;gap:9px;padding:0 7px 8px}
+.top h1{font-size:15px;font-weight:500;margin:0;letter-spacing:.2px}
+.top small{font-size:10px;color:#7c7e8b;display:block;margin-top:5px}
+.grow{flex:1}
+.top button{border:0;background:none;color:#9e9fae;padding:5px;font-size:16px}
+.canvas{flex:1;min-height:490px;display:flex;flex-direction:column;position:relative;isolation:isolate;overflow:hidden;padding:17px;border-radius:11px;border:1px solid #414157;border-top-color:#65657c;background:radial-gradient(ellipse at 55% -18%,#56536e,#303047 28%,#1b1c2e 50%,#11121b 90%);box-shadow:inset 0 1px 0 #d6d4ef12}
+.canvas:before{content:"";position:absolute;inset:0;z-index:-1;background-image:radial-gradient(circle,#c5c9e14a .5px,transparent 1px),radial-gradient(circle,#b1b6cf38 .5px,transparent 1px);background-size:47px 53px,79px 83px;background-position:7px 17px,21px 33px;mask-image:linear-gradient(#000,transparent 90%)}
+.agent{display:flex;justify-content:center;align-items:center;gap:7px;color:#c6c7d7;font-size:11px;letter-spacing:.4px;margin-bottom:25px}
+.light{height:6px;width:6px;border-radius:50%;background:#bccce9;box-shadow:0 0 10px #b0c7ff99;flex-shrink:0}
+.time{font-size:10px;color:#aaaabc;margin:0 0 11px;font-weight:400;letter-spacing:.4px}
+.glass{border:1px solid #c9c7df27;border-top-color:#d3d1e049;background:linear-gradient(140deg,#9291af29,#8d8da209);border-radius:10px;backdrop-filter:blur(16px);box-shadow:0 7px 20px #08091433;padding:16px}
+.glass h2{margin:0 0 11px;font-size:22px;font-weight:450;letter-spacing:-.3px;line-height:1.45}
+.glass p{font-size:12px;line-height:1.9;color:#c7c6d5;margin:0 0 17px}
+.numbers{border-top:1px solid #ccd0e11d;padding-top:14px;display:flex;gap:12px}
+.numbers>div{flex:1;min-width:0}
+.numbers strong{display:block;color:#f1f0f7;font:400 26px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:-1.5px}
+.numbers small{display:block;margin-top:6px;color:#a8a9bb;font-size:10px}
+.itemslabel{font-size:10px;letter-spacing:.5px;color:#a3a3b8;margin:22px 0 9px}
+.item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid #babbd42a;border-top-color:#b7bad34a;border-radius:7px;background:linear-gradient(110deg,#48465f91,#292a3bb8);box-shadow:0 4px 9px #08081522;padding:10px;margin-bottom:8px}
+.item:hover{border-color:#a7abc878;background:#41425b}
+.itemicon{width:30px;height:30px;flex-shrink:0;display:grid;place-items:center;border:1px solid #a3a8c436;border-radius:7px;background:linear-gradient(140deg,#9b9eb943,#45485d40);color:#d5d9e9}
+.itemicon svg{width:17px;height:17px}
+.item b{font-size:12px;font-weight:500}
+.item small{display:block;font-size:10px;line-height:1.5;margin-top:5px;color:#a6a7bc}
+.amount{font:12px ui-monospace,SFMono-Regular,monospace;color:#e0c5b3;white-space:nowrap}
+.arrow{font-size:17px;color:#b2b3c5}
+.note{font-size:11px;color:#9497ac;line-height:1.8;margin:12px 0 15px}
+.bottom{margin-top:auto;padding-top:12px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+.chips button{font-size:10px;color:#babed3;background:#bac3dc0c;border:1px solid #a2abc12c;border-radius:5px;padding:5px 8px}
+.chips button:hover{background:#b5bdd22d}
+.composer{display:flex;gap:8px;align-items:center;border:1px solid #a2a3bd49;border-top-color:#c5c5dc60;border-radius:9px;background:linear-gradient(#b5b5d12e,#8e91b019);backdrop-filter:blur(20px);padding:8px;box-shadow:inset 0 1px 8px #ffffff09,0 5px 12px #0003}
+.composer input{background:none;border:0;outline:none;width:100%;min-width:0;font-size:12px;letter-spacing:.3px}
+.composer input::placeholder{color:#a3a2b6}
+.add{border:0;background:none;color:#b8bbce;font-size:18px}
+.send{width:29px;height:28px;flex-shrink:0;display:grid;place-items:center;border:1px solid #e5e6ee;background:linear-gradient(#f2f3f8,#c3c6d4);border-radius:6px;color:#292b39}
+.right{width:166px;flex-shrink:0;padding:15px 11px;border:1px solid #38383f;border-top-color:#51515c;background:linear-gradient(145deg,#1e1e25,#15151b 80%);border-radius:10px;display:flex;flex-direction:column}
+.right h3{font-size:13px;font-weight:500;margin:0 0 15px}
+.module{display:flex;align-items:center;gap:7px;background:linear-gradient(135deg,#484753,#2a2934);border:1px solid #a9aac142;border-radius:7px;padding:10px 7px;font-size:11px}
+.tabs{display:flex;gap:13px;border-bottom:1px solid #363640;margin:16px 0 19px}
+.tabs button{padding:8px 0;border:0;border-bottom:1px solid transparent;background:none;color:#81828f;font-size:10px}
+.tabs button.active{border-color:#cdcedb;color:#e4e5ee}
+.group{color:#797b8a;font-size:10px;margin-bottom:15px}
+.tool{display:flex;align-items:center;gap:8px;margin-bottom:19px;font-size:11px;color:#c7c8d4}
+.tool svg{color:#a1a4bb}
+.tool small{display:block;font-size:9px;color:#777989;margin-top:5px}
+.dot{height:5px;width:5px;border-radius:50%;background:#9dbcae;margin-left:auto;flex-shrink:0}
+.dot.off{background:#62616e}
+.foot{margin-top:auto;border-top:1px solid #30303a;padding-top:12px;color:#848593;font-size:10px;line-height:1.8}
+.back{background:none;border:0;color:#bcbfd5;font-size:11px;padding:0 0 15px}
+.field{display:flex;justify-content:space-between;gap:8px;padding:11px 0;border-bottom:1px solid #ccd0e11b;font-size:11px}
+.field span:first-child{color:#a8a9bf}
+.primary{width:100%;margin-top:18px;border:1px solid #ced1e6;border-radius:6px;background:linear-gradient(#e6e8f3,#b9bfd6);color:#292b3b;padding:9px;font-weight:500}
+.reply{font-size:11px;line-height:1.8;padding:12px 0;color:#c9cadb}
+.mobile{display:none}
+.caption{text-align:center;color:#3d4656;font-size:10px;margin-top:11px;letter-spacing:1px}
+@media(max-width:720px){.left{width:112px;padding-left:3px;padding-right:3px}.right{width:135px;padding-left:9px;padding-right:9px}.desktop{padding:14px 8px 12px}.canvas{padding:12px}.glass{padding:13px}.numbers strong{font-size:22px}.glass h2{font-size:20px}}
+@media(max-width:560px){.left,.right{display:none}.window.showleft .left,.window.showright .right{display:flex;width:100%;min-height:490px}.window.showleft .center,.window.showright .center{display:none}.mobile{display:flex;gap:6px}.mobile button{font-size:10px}.canvas{padding:15px}.desktop{padding:12px 9px}.window{min-height:530px}.glass h2{font-size:23px}.numbers strong{font-size:25px}}
+
+/* 桌面环境铺满视口，窗口按原稿比例居中浮起；内容多时内部滚动，不把整页撑长 */
+html,body{height:100%}
+body{margin:0;overflow:hidden}
+.desktop{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+.window{width:100%;max-width:1180px;height:calc(100vh - 82px)}
+.caption{margin-top:10px}
+.center,.canvas{min-height:0}
+#scene{overflow-y:auto;min-height:0;padding-right:4px}
+#scene::-webkit-scrollbar{width:6px}
+#scene::-webkit-scrollbar-thumb{background:#5b5c6e55;border-radius:3px}
+.left,.right{overflow-y:auto;min-height:0}
+@media(max-width:560px){.window{height:auto;min-height:530px}.desktop{align-items:flex-start}
+  #scene{overflow:visible}}
+
+/* ===== 登录 / 提示 / 确认（新增层，沿用同一套材质语言）===== */
+.auth-shade{position:fixed;inset:0;z-index:40;display:none;place-items:center;background:#06060ac9;backdrop-filter:blur(6px)}
+.auth-shade.open{display:grid}
+.auth-panel{width:340px;max-width:calc(100vw - 32px);padding:24px;border-radius:14px;border:1px solid #62646f;border-top-color:#8c8fa3;background:linear-gradient(145deg,#191a22,#101017);box-shadow:0 25px 40px -16px #000b}
+.auth-panel h2{margin:6px 0 8px;font-size:20px;font-weight:450;letter-spacing:-.3px}
+.auth-label{font-size:10px;letter-spacing:.5px;color:#8b8d9c}
+.auth-sub{font-size:11px;line-height:1.7;color:#9497ac;margin:0 0 18px}
+.auth-panel label{display:block;font-size:10px;color:#9b9dae;margin:12px 0 6px}
+.auth-panel input{width:100%;padding:10px;border-radius:7px;border:1px solid #4b4d5c;background:#0d0e14;outline:none;font-size:12px}
+.auth-panel input:focus{border-color:#b9bcd0}
+.auth-error{margin:10px 0 0;padding:9px 11px;border-radius:7px;background:#3d1d22;border:1px solid #7d3640;color:#f0b9bb;font-size:11px;line-height:1.60}
+.toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,14px);z-index:60;padding:10px 16px;border-radius:8px;border:1px solid #6a6c7c;background:#1c1d26f2;color:#e8e8f0;font-size:11.5px;opacity:0;pointer-events:none;transition:opacity .22s,transform .22s}
+.toast.open{opacity:1;transform:translate(-50%,0)}
+/* 确认弹窗 */
+.confirm-box{width:400px;max-width:calc(100vw - 32px)}
+.confirm-box .field{border-bottom-color:#ccd0e11b}
+.confirm-box .actions{display:flex;gap:8px;margin-top:18px}
+.confirm-box .actions button{flex:1;margin-top:0}
+.ghost-btn{border:1px solid #4f5160;border-radius:6px;background:#191a22;color:#c5c6d3;padding:9px;font-size:11.5px}
+.danger-btn{border:1px solid #8d4a53;border-radius:6px;background:#2a171b;color:#f0b9bb;padding:9px;font-size:11.5px}
+.reason-input{width:100%;margin-top:10px;padding:9px;border-radius:7px;border:1px solid #4b4d5c;background:#0d0e14;outline:none;font-size:12px;color:#e9e9ef}
+.stale-warn{margin:10px 0 0;padding:9px 11px;border-radius:7px;background:#3a2f1a;border:1px solid #7a6432;color:#e8d9a8;font-size:11px;line-height:1.6}
+
+/* ===== 右栏事实读数块（新增样式类，只作用于右栏，不动上方材质与 token）=====
+   间距 4px 栅格：标题下 8、行高 32、块间 16、块前 12；
+   字号照规范：标题/标签/单位 12/16，正文 13/20，数字 13/20 等宽。 */
+.factblock{margin:0 0 16px}
+.module + .factblock{margin-top:12px}
+.factblock + .factblock{margin-top:0}
+.factblock-title{font-size:12px;line-height:16px;color:#a8a9bb;margin:0 0 8px;letter-spacing:0}
+.factblock-text{font-size:13px;line-height:20px;color:#a8a9bb;margin:0}
+.facts-list{display:flex;flex-direction:column}
+.factrow{display:grid;grid-template-columns:15px minmax(0,1fr) auto;align-items:center;column-gap:8px;min-height:32px}
+.factrow svg{width:15px;height:15px;color:#a1a4bb}
+.factrow-label{font-size:12px;line-height:16px;color:#a8a9bb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.factrow-value{display:flex;align-items:baseline;justify-content:flex-end;gap:4px;white-space:nowrap;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.factrow-num{font-size:13px;line-height:20px;color:#e9e9ef}
+.factrow-unit{font-size:12px;line-height:16px;color:#a8a9bb}
+.facts-empty{font-size:12px;line-height:16px;color:#a8a9bb;margin:0}
