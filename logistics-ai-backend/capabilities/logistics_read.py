@@ -317,7 +317,7 @@ def inspect_business(host, user, *, snapshot=None, tasks_snapshot=None):
     issues.sort(key=lambda x:(x["severity"]!="critical",x["kind"],x["waybill_number"],x["id"]))
     counts=Counter(x["kind"] for x in issues)
     summary={"unreturned_receipts":counts["unreturned_receipt"],"duplicate_fees":counts["duplicate_fee"],"open_differences":counts["open_difference"],"waybill_anomalies":counts["waybill_anomaly"],"overdue_tasks":counts["overdue_task"],"total":len(issues)}
-    return {"generated_at":now_iso(),"summary":summary,"issues":issues}
+    return {"generated_at":now_iso(),"summary":summary,"issues":issues,"disabled_modules":sorted(set(LOGISTICS_MODULE_TOOLS)-host._enabled_modules())}
 
 
 def monthly_analytics(host, user,month):
@@ -360,7 +360,9 @@ def monthly_analytics(host, user,month):
               "by_destination":[{"destination":k,"count":v} for k,v in sorted(destinations.items()) if k]}
     result={"month":month,"generated_at":now_iso(),"state_rev":state_row["rev"],"activity":activity,"receipts":receipt_summary,
             "fees":{"records":len(fee_rows),"confirmed":status_counts["已确认"],"pending":status_counts["待确认"],"disputed":status_counts["有差异"]}}
-    if user["role"]=="owner_finance":
+    if not host._module_enabled("receipt"):result.pop("receipts",None)
+    result["disabled_modules"]=sorted(set(LOGISTICS_MODULE_TOOLS)-host._enabled_modules())
+    if user["role"]=="owner_finance" and host._module_enabled("finance"):
         bad_waybill_amounts=sum(not valid_numeric(x.get("amount")) for x in docs)
         confirmed_fees=[x for x in fee_rows if x.get("status")=="已确认"]
         bad_fee_amounts=sum(not valid_numeric(x.get("amount")) for x in confirmed_fees)
