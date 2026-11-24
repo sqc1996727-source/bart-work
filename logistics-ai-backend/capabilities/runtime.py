@@ -7,7 +7,7 @@ from . import catalog,files,analysis,team,workplace_memory
 CURRENT_JOB=contextvars.ContextVar('julong_job',default=None)
 CURRENT_CONVERSATION=contextvars.ContextVar('julong_conversation',default=None)
 CURRENT_SOURCES=contextvars.ContextVar('julong_sources',default=None)
-_WORKERS={};_LOCK=threading.Lock()
+_WORKERS={};_HEARTBEATS={};_LOCK=threading.Lock()
 RANK=files.RANK
 
 def initialize(host):
@@ -163,6 +163,8 @@ def tick(host,now=None):
     user=dict(user_row) if user_row else None
     if not user or RANK[user['role']]<row['role_rank']:
      con.execute("UPDATE agent_followups SET state='permission_changed' WHERE id=?",(row['id'],));continue
+    if row['condition'] in {'paper_received','receipt_delivered'} and not host._module_enabled('receipt') or row['condition']=='run_routine' and not host._module_enabled('transport'):
+     con.execute("UPDATE agent_followups SET state='permission_changed' WHERE id=?",(row['id'],));continue
     if row['condition']=='run_agent':
      _enqueue_scheduled_agent(host,con,row,user,now)
      continue
@@ -263,6 +265,7 @@ def start(host):
          pending=[f for f in pending if not f.done()]
          for _ in range(4-len(pending)):pending.append(pool.submit(run_one,host))
          tick(host);deliver_followups(host)
+         _HEARTBEATS[key]=time.monotonic()
          if time.monotonic()-last_team_tick>10:team.tick(host);last_team_tick=time.monotonic()
         except Exception as exc:
          import logging
@@ -348,6 +351,9 @@ def execute(host,user,name,args,key):
     for fid in args['file_ids']:
      if fid not in sources:sources.append(fid)
   elif name=='find_records':result=find_records(host,user,args)
+  elif name=='recall_work_result':
+   from . import work_history
+   result=work_history.recall(host,user,args)
   elif name=='create_document':result={'document':files.make_artifact(host,user,args,key)}
   elif name=='manage_preference':result=preference_action(host,user,args)
   elif name=='search_workplace_memory':result=workplace_memory.search(host,user,args['query'])
