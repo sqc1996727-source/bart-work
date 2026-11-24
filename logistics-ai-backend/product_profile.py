@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 LEGACY_ID = "julong-test"
+UNCONFIGURED_ID = "master-unconfigured"
 ROLES = ("employee", "dispatcher", "owner_finance")
 
 # 行业能力包注册表。通用内核提供：会话、长期记忆、偏好、任务、文件、
@@ -23,6 +24,9 @@ def industry_pack(industry):
 def load(root, environ=None):
     env = os.environ if environ is None else environ
     file = env.get("BOT_PROFILE")
+    if not file and env.get("BOT_LEGACY_COMPAT") != "1":
+        return {"tenant_id": UNCONFIGURED_ID, "name": "企业工作空间", "industry": "general",
+                "modules": (), "data_dir": (Path(root) / ".unconfigured").resolve()}
     raw = json.loads(Path(file).read_text(encoding="utf-8")) if file else {}
     if not isinstance(raw, dict) or set(raw) - {"tenant_id", "name", "industry", "modules"}:
         raise ValueError("invalid product profile")
@@ -33,6 +37,8 @@ def load(root, environ=None):
     industry = raw.get("industry", "logistics")
     if not isinstance(tenant, str) or not re.fullmatch(r"[a-z][a-z0-9-]{2,63}", tenant):
         raise ValueError("invalid tenant_id")
+    if file and (tenant == UNCONFIGURED_ID or (tenant == LEGACY_ID and env.get("BOT_LEGACY_COMPAT") != "1")):
+        raise ValueError("reserved tenant_id")
     if not isinstance(name, str) or not name.strip() or len(name) > 80:
         raise ValueError("invalid enterprise name")
     if not isinstance(industry, str) or not industry.strip() or len(industry) > 40:
@@ -53,6 +59,8 @@ def load(root, environ=None):
 def bind_database(con, profile):
     """Refuse mismatched or unlabelled preexisting DBs before schema migration."""
     tenant = profile["tenant_id"]
+    if tenant == UNCONFIGURED_ID:
+        raise RuntimeError("configure an explicit enterprise before initialization")
     tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
     if "product_installation" in tables:
         row = con.execute("SELECT tenant_id FROM product_installation WHERE id=1").fetchone()
