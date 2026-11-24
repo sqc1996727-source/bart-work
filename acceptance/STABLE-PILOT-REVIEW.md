@@ -52,3 +52,8 @@ WorkBuddy 报告该基线 157 项测试通过，9 组运行验收通过，但已
 当前环境直接执行远程 JS 的 api/fail 函数，使用合成 HTTP 响应验证四种情况通过：错误密码 401、认证失效 401、频率限制 429、其他权限拒绝 403。JS 语法检查通过。完整仓库克隆仍受 DNS 限制，本次新增 Python 测试及真实模型复现未运行。
 
 定向复验：以当前最新提交建立隔离环境，不使用真实账本。运行 `BOT_STRICT_PILOT=0 python3 -m unittest -v test_stable_pilot`，再运行 `BOT_STRICT_PILOT=0 python3 -m unittest discover -s . -p 'test_*.py'`。严格模式使用已授权真实模型重跑 F-2001 场景：返回正常业务拒绝答复，不生成候选、不改账本、原样重复不执行、不产生 502；合法费用候选审阅确认仍正常，取消与异常恢复约束仍有效。浏览器实测错误密码与会话失效文案。报告实际结果，不自行修改源码、不切生产；原未验证的生产 HTTPS、密码轮换、真实账本迁移等事项继续保留为上线条件。
+
+
+## Final business closure: fee reversal
+
+Baseline 32df1b0 was independently reported passing 161 tests and targeted real-model/browser checks. The subsequent patch exposes the existing reversal status plus reason to the Agent and adds a manual form in the financial module. Both create only a candidate; the existing password review/confirm and audit path remains mandatory. One focused regression was added. New Python and browser runtime tests are pending. Verify missing reason, forbidden employee, finance-disabled access, correct candidate/reason, wrong password, correct confirmation, retained original amount/status=作废, and repeated confirmation without a duplicate write. Verify Agent does not choose reversal on its own after a rejected status change. No production changes.
