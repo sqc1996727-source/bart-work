@@ -1428,7 +1428,8 @@ class V3Context:
         if user["role"]=="employee":
             waybills=[x for x in waybills if isinstance(x,dict) and _case_allowed(x,principal_id=principal_id)]
         query_text=str(query or "").casefold()
-        tokens=[x for x in re.findall(r"[\w-]+",query_text) if len(x)>1]
+        from ai.agent_policy import query_terms, relevance
+        tokens=query_terms(query_text)
         found=[]
         from ai.service import Evidence
         for ticket in waybills:
@@ -1439,8 +1440,8 @@ class V3Context:
             receipt=next((x for x in receipts if isinstance(x,dict) and str(x.get("number",""))==number),None)
             projected_record={"waybill":projected,"fees":associated_fees,"receipt":self._receipt_view(receipt)}
             searchable=json.dumps(projected_record,ensure_ascii=False,sort_keys=True).casefold()
-            score=sum(token in searchable for token in tokens)
-            if (number and number.casefold() in query_text) or (tokens and score>=min(2,len(tokens))):
+            score=relevance(tokens,searchable)
+            if (number and re.search(r"(?<![0-9A-Za-z_-])"+re.escape(number.casefold())+r"(?![0-9A-Za-z_-])",query_text)) or score>=2:
                 text=json.dumps(projected_record,ensure_ascii=False,separators=(",",":"))
                 found.append(Evidence(f"v3:waybill:{number}:r{state_row['rev']}",text,"waybill_case",{"waybill_number":number,"state_rev":state_row["rev"]}))
         from capabilities import workplace_memory as wm_policy
@@ -1452,7 +1453,7 @@ class V3Context:
             # Enterprise scope sees shared policy only; personal scope additionally sees this user's preferences.
             if memory["scope"]=="personal" and memory_scope!="personal": continue
             text=f"{memory['title']}: {memory['content']}"
-            score=sum(token in text.casefold() for token in tokens)
+            score=relevance(tokens,text)
             if score or (memory_scope=="personal" and any(word in query_text for word in ("偏好","习惯","喜欢","怎么称呼","表达方式"))):
                 found.append(Evidence(f"memory:{memory['id']}",text,"business_memory",{"scope":memory["scope"]}))
         for wm in workplace_rows:
@@ -1460,10 +1461,16 @@ class V3Context:
             text=f"{wm['topic']}: {wm['title']}: {wm['content']}"
             if wm["scope"]=="personal" and wm["owner_id"]!=principal_id: continue
             if re.search(r"厂家.{0,8}(?:运费|运价|底价|结算|费用|价格)|(?:运费|运价|底价).{0,8}厂家|运费金额",text): continue
-            score=sum(token in text.casefold() for token in tokens)
+            score=relevance(tokens,text)
             if score or (memory_scope=="personal" and any(word in query_text for word in ("偏好","习惯","喜欢","怎么称呼","表达方式"))):
                 found.append(Evidence(f"workplace_memory:{wm['id']}",text,"business_memory",{"scope":wm["scope"],"kind":wm["kind"]}))
-        return found[:20]
+        # Reserve room for relevant evidence and current rules independently.
+        rules_found=[e for e in found if e.source=="business_rule"]
+        other=[e for e in found if e.source!="business_rule"]
+        other.sort(key=lambda e:relevance(tokens,e.text),reverse=True)
+        rules_found.sort(key=lambda e:relevance(tokens,e.text),reverse=True)
+        selected=rules_found[:8]+other[:12]
+        return (selected+rules_found[8:]+other[12:])[:20]
 
 
 def _v3_operational_summary(user,*,record_audit=True):
@@ -1616,6 +1623,17 @@ def _v3_add_finance(target, raw, user, *, note=True):
 class V3Tools:
     """Authorized V3 business tools; financial fields are projected by server-side scope."""
     supports_idempotency=True
+    # Only transactional idempotency or safely repeatable reads can resume
+    # a running journal event after an uncertain interruption.
+    recovery_safe_tools=frozenset({
+        "list_waybills","get_waybill_history","get_recent_changes","get_operational_summary",
+        "get_daily_routine_scan","review_business_records","list_capabilities","read_skill",
+        "find_records","search_workplace_memory","search_company_knowledge","list_colleagues",
+        "get_case_workspace","get_agent_usage","get_agent_health","analyze_table",
+        "create_task","update_task","update_receipt_status","update_fee_status","send_message",
+        "handoff_case","share_case_file","publish_company_knowledge","manage_event_alerts",
+        "commit_waybill_import","schedule_followup"
+    })
     def __init__(self): self.base=WorkbenchTools()
     def list_tools(self, *, tenant_id, principal_id):
         user=self.base._principal(tenant_id,principal_id)
@@ -1774,11 +1792,12 @@ def _v3_ai_service():
     global _V3_AI_SERVICE
     if _V3_AI_SERVICE is None:
         from ai.service import AIService
+        from ai.agent_policy import ExecutionPolicy
         base=_ai_service()
-        _V3_AI_SERVICE=AIService(base.store,V3Context(),V3Tools(),V3SafeModel(base.model_client),
+        _V3_AI_SERVICE=AIService(base.store,V3Context(),V3Tools(),V3SafeModel(base.model_client) if base.model_client is not None else None,
                                  max_message_chars=base.max_message_chars,
                                  max_history_messages=base.max_history_messages,
-                                 max_tool_rounds=12)
+                                 execution_policy=ExecutionPolicy.from_env())
     return _V3_AI_SERVICE
 
 
