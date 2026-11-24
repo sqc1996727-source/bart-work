@@ -31,7 +31,7 @@ function empty(t){return '<div class="live-empty">'+esc(t)+'</div>'}
 function loginHTML(){return '<div class="empty appear">'+ic('spark')+'<h2>进入企业工作空间</h2><p>使用企业账号登录</p></div><form class="liveform" onsubmit="login(event)"><label>账号<input name="username" required autocomplete="username"></label><label>密码<input name="password" type="password" required autocomplete="current-password"></label><button class="primary" type="submit">登录</button></form>'}
 async function login(e){e.preventDefault();const f=e.target,b=f.querySelector('button');b.disabled=true;try{const data=new FormData(f);await api('/api/login',{username:data.get('username'),password:data.get('password')});f.reset();await boot()}catch(err){fail(err)}finally{b.disabled=false}}
 async function logout(){try{await api('/api/logout',{});resetSession();live.error='';render()}catch(e){fail(e)}}
-async function boot(){live.loading=true;live.error='';render();try{live.boot=await api('/api/agent/ui/bootstrap');modules.splice(0,modules.length,...arr(live.boot.modules).filter(m=>typeof m.id==='string'&&/^[a-z0-9-]+$/.test(m.id)).map(m=>[m.id,Object.hasOwn(icons,m.icon)?m.icon:'file',m.label,m.description,m.prompt]));await refresh('home');await refresh('tasks');const running=live.jobs.find(j=>activeStates.has(j.state));if(running){await selectJob(running.id)}}catch(e){if(e.status===401){resetSession()}else{live.error=e.message}}finally{live.loading=false;render()}}
+async function boot(){live.loading=true;live.error='';render();try{live.boot=await api('/api/agent/ui/bootstrap');modules.splice(0,modules.length,...arr(live.boot.modules).filter(m=>typeof m.id==='string'&&/^[a-z0-9-]+$/.test(m.id)).map(m=>[m.id,Object.hasOwn(icons,m.icon)?m.icon:'file',m.label,m.description,m.prompt,arr(m.actions)]));await refresh('home');await refresh('tasks');const running=live.jobs.find(j=>activeStates.has(j.state));if(running){await selectJob(running.id)}}catch(e){if(e.status===401){resetSession()}else{live.error=e.message}}finally{live.loading=false;render()}}
 async function refresh(v){const epoch=live.epoch;let result;
  if(v==='home'){result=await api('/api/agent/today');if(epoch===live.epoch)live.today=result}
  if(v==='tasks'){const [a,b]=await Promise.all([api('/api/agent/jobs'),api('/api/agent/followups')]);if(epoch===live.epoch){live.jobs=arr(a.items);live.followups=arr(b.items)}}
@@ -63,7 +63,14 @@ function listHTML(){if(view==='history')return title('工作记录','从历史�
 }
 function scopeControls(){return '<div class="live-tools"><button class="secondary" '+(live.scope==='enterprise'?'disabled':'')+' onclick="changeScope(\'enterprise\')">企业工作</button><button class="secondary" '+(live.scope==='personal'?'disabled':'')+' onclick="changeScope(\'personal\')">个人工作</button></div>'}
 async function changeScope(scope){if(live.pending||live.posting||live.uploading||activeStates.has(live.selected?.state)){live.error='当前工作尚未结束，请完成后切换记忆范围';render();return}stopWatch();live.scope=scope;live.conversation=null;live.messages=[];live.selected=null;live.attachmentIds=[];$('prompt').value='';await go(view==='history'?'history':'new')}
-function moduleActions(m){let a='';if(m[0]==='finance')a+='<button class="secondary" onclick="loadFinance()">审阅费用与对账候选</button><button class="secondary" onclick="openSheet(\'feeVoid\')">作废已确认费用</button>';if((m[0]==='transport'||m[0]==='receipt')&&modules.some(x=>x[0]==='transport'))a+='<a class="secondary live-link" href="/manual-v9">人工录入与业务操作</a>';return a}
+function moduleActions(m){return arr(m[5]).map(action=>{
+ const label=esc(action.label||'办理业务');
+ if(action.kind==='link'&&typeof action.href==='string'&&/^\/[a-zA-Z0-9/_-]+$/.test(action.href)&&!action.href.startsWith('//'))return '<a class="secondary live-link" href="'+esc(action.href)+'">'+label+'</a>';
+ if(action.kind==='finance_review')return '<button class="secondary" onclick="loadFinance()">'+label+'</button>';
+ if(action.kind==='fee_void')return '<button class="secondary" onclick="openSheet(\'feeVoid\')">'+label+'</button>';
+ return '';
+}).join('')}
+
 function sheetHTML(id){let [type,idx]=id.split(':'),i=Number(idx),heading='详情',body='',k='file';
  if(type==='module'){const m=modules[i];heading=m?.[2]||'业务';k=m?.[1]||'file';body=m?'<h2>'+esc(m[2])+'</h2><p>'+esc(m[3])+'</p><div class="sheetactions"><button class="primary" onclick="launch('+arg(m[4])+')">交给 AI 处理</button>'+moduleActions(m)+'</div>':empty('此入口未开通')}
  else if(type==='case'){const c=arr(live.today?.routine?.routine_candidates)[i];heading=c?.kind||'待核实事项';body=c?'<h2>'+esc(heading)+'</h2><p class="livecopy">'+esc(c.evidence||'')+'</p>'+field('业务编号',esc(c.waybill_number||'—'))+'<div class="sheetactions"><button class="primary" onclick="launch('+arg('调查以下待核实事项并整理证据：'+c.kind+' '+(c.waybill_number||''))+')">交给 AI 调查</button>'+(c.waybill_number?'<button class="secondary" onclick="loadCase('+arg(c.waybill_number)+')">查看记录</button>':'')+'</div>':empty('记录不存在')}
