@@ -1,7 +1,6 @@
 """Deployment-owned product profile; one isolated data directory per enterprise.
 
-No customer-facing mutation API. A module entry controls presentation, not
-authorization: existing server permissions remain authoritative.
+No customer-facing mutation API. Module scope is enforced by module_scope.py; existing role permissions still apply.
 """
 import json
 import os
@@ -79,5 +78,5 @@ def bind_database(con, profile):
 
 def public_profile(profile, role):
     return {"organization": {"name": profile["name"], "industry": profile["industry"]},
-            "modules": [{"id": key, **{k: v for k, v in MODULES[key].items() if k != "roles"}}
-                        for key in profile["modules"] if role in MODULES[key]["roles"]]}
+            "modules": [{"id": key, **{k: v for k, v in industry_pack(profile['industry'])['modules'][key].items() if k != "roles"}}
+                        for key in profile["modules"] if role in industry_pack(profile["industry"])["modules"][key]["roles"]]}
