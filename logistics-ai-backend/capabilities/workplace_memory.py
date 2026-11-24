@@ -18,42 +18,35 @@ def initialize(host):
    con.execute('ALTER TABLE workplace_memory ADD COLUMN created_by TEXT')
 
 def save(host,user,args,conversation_id):
- scope=args['scope'];kind=args['kind'];topic=str(args['topic']).strip()[:100]
- title=str(args['title']).strip()[:150];content=str(args['content']).strip()[:3000]
- applies=str(args.get('applies_to','')).strip()[:300]
- if scope not in ('personal','company') or kind not in ('preference','experience','lead','rule') or not topic or not title or not content:raise ValueError()
- if scope=='company' and user['role'] not in {'owner_finance','dispatcher'}:raise PermissionError()
- if kind=='rule' and scope!='company':raise ValueError()
- if SECRET.search(topic+' '+title+' '+content):raise ValueError()
- start=str(args.get('valid_from') or date.today().isoformat());end=str(args.get('valid_until') or '')
- date.fromisoformat(start)
- if end and date.fromisoformat(end)<date.fromisoformat(start):raise ValueError()
  action=args.get('action')
- # 动作必须显式声明。此前缺省 action 会按 kind 推断成 save/note，
- # 等于让"随口说的规则"绕过显式写入契约自动落成正式版本，必须堵死。
  if action is None:raise ValueError('explicit_action_required')
- if action not in {'save','note','forget'}:raise ValueError()
- # forget 独立处理：撤回不需要 expected_version 匹配当前版本，
- # 也不应被 save/rule 的契约约束误伤。个人偏好本人可撤回，
- # 企业记忆仅授权岗位可撤回，全部留痕。
+ if action not in {'save','note','forget'}:raise ValueError('invalid_action')
+ scope=args.get('scope');topic=str(args.get('topic','')).strip()[:100]
+ if scope not in ('personal','company') or not topic:raise ValueError('scope_and_topic_required')
+ if scope=='company' and user['role'] not in {'owner_finance','dispatcher'}:raise PermissionError()
  if action=='forget':
-  scope=args['scope'];topic=str(args.get('topic','')).strip()[:100]
-  if scope not in ('personal','company') or not topic:raise ValueError('forget_requires_scope_topic')
-  if scope=='company' and user['role'] not in {'owner_finance','dispatcher'}:raise PermissionError()
   owner=user['id'] if scope=='personal' else ''
   with host.db() as con:
    con.execute('BEGIN IMMEDIATE')
    actor=con.execute('SELECT role FROM users WHERE id=? AND tenant_id=? AND active=1',(user['id'],user['tenant_id'])).fetchone()
    if not actor or actor['role']!=user['role']:raise PermissionError()
+   cur=con.execute('SELECT active,kind,created_by FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=? ORDER BY version DESC LIMIT 1',(user['tenant_id'],owner,scope,topic)).fetchone()
    if scope=='company' and user['role']=='dispatcher':
-    owned=con.execute('SELECT 1 FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=? AND created_by=? AND active=1',(user['tenant_id'],owner,scope,topic,user['id'])).fetchone()
-    if not owned:raise PermissionError()
-   cur=con.execute('SELECT active FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=? ORDER BY version DESC LIMIT 1',(user['tenant_id'],owner,scope,topic)).fetchone()
+    if not cur or cur['created_by']!=user['id'] or cur['kind']=='rule':raise PermissionError()
    if cur and cur['active']:
     con.execute('UPDATE workplace_memory SET active=0 WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=?',(user['tenant_id'],owner,scope,topic))
     host.audit(con,user,'memory.forget','workplace_memory',topic,{'scope':scope})
    con.commit()
   return {'forgotten':True,'topic':topic}
+ kind=args.get('kind')
+ title=str(args.get('title','')).strip()[:150];content=str(args.get('content','')).strip()[:3000]
+ applies=str(args.get('applies_to','')).strip()[:300]
+ if kind not in ('preference','experience','lead','rule') or not title or not content:raise ValueError('kind_title_content_required')
+ if kind=='rule' and scope!='company':raise ValueError('rule_requires_company_scope')
+ if SECRET.search(topic+' '+title+' '+content):raise ValueError('secret_not_allowed')
+ start=str(args.get('valid_from') or date.today().isoformat());end=str(args.get('valid_until') or '')
+ date.fromisoformat(start)
+ if end and date.fromisoformat(end)<date.fromisoformat(start):raise ValueError('invalid_validity_period')
  # 契约层防御：Agent 常把"主动沉淀"调成 save 却漏 expected_version。
  # 实际行为（与 catalog schema 一致）：
  #  - action 必须显式传，缺省一律拒绝（explicit_action_required），不推断动作；
@@ -67,8 +60,6 @@ def save(host,user,args,conversation_id):
  note=action=='note'
  if note and kind=='rule':raise ValueError('rule_requires_explicit_save_with_version')
  if note and kind not in ('preference','experience','lead'):raise ValueError()
- if note and scope=='company' and kind=='rule':raise ValueError()
- if note and not applies:applies=args.get('applies_to','')
  expected=args.get('expected_version')
  if note:
   expected=None
