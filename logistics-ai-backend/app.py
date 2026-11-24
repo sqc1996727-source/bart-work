@@ -1150,8 +1150,9 @@ def _authenticated_persona(*, tenant_id, principal_id):
     if not row or row["role"] not in names:
         raise PermissionError("authenticated_role_required")
     folder = ROOT / "ai" / "persona"
-    core = (folder / "00-统一人格内核.md").read_text(encoding="utf-8")
-    role = (folder / names[row["role"]]).read_text(encoding="utf-8")
+    logistics_enabled = _module_enabled("transport")
+    core = (folder / ("00-统一人格内核.md" if logistics_enabled else "general.md")).read_text(encoding="utf-8")
+    role = (folder / names[row["role"]]).read_text(encoding="utf-8") if logistics_enabled else "当前角色："+row["role"]
     # Examples illustrate tone only; names and fictitious outcomes must never
     # become facts or stock replies in a live conversation.
     role = re.sub(r"## 角色示例（仅展示语气，不能当作真实业务结果）.*?(?=\n## 特别注意)", "", role, flags=re.S)
@@ -1162,14 +1163,14 @@ def _authenticated_persona(*, tenant_id, principal_id):
     # 带上当前 Bot 的任务态（干到哪、催到哪），让下一轮对话能「接着上次干」。
     bot_state_text = ""
     try:
-        pending = agent_routine.get_bot_state(sys.modules[__name__], dict(person), include_done=True)
+        pending = agent_routine.get_bot_state(sys.modules[__name__], dict(person), include_done=True) if logistics_enabled else []
         if pending:
             bot_state_text = "\n\n你最近的任务状态（历史扫描可用 get_daily_routine_scan 按 scan_id 读取；状态可能变化）：" + json.dumps(pending, ensure_ascii=False)
     except Exception:
         pass
     return "当前企业："+PRODUCT["name"]+"；行业："+PRODUCT["industry"]+"。\n"+core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（每次必须显式给 action，不能省略；记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version；撤回用 forget）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n"+ ("你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
-       if product_profile.industry_pack(PRODUCT["industry"])["business_tools"] else
-       "你是会主动干活的 Bot，不是问一句答一句。本企业未启用行业业务工具包，只有通用能力（记忆、任务、文件、表格分析、定时跟进、团队协作）。老板或管理层问「今天该盯什么」时，用现有通用能力核对真实工作任务与已记规则，如实说明哪些业务数据尚未接入，不虚构行业结果。")
+       if logistics_enabled else
+       "本企业未启用运输业务；用 list_work_tasks 核对当前真实任务，用授权的文件、分析、企业规则和持续跟进工具执行工作。未接入的数据不作推测。")
 
 
 class WorkbenchContext:
@@ -1579,7 +1580,7 @@ class V3Tools:
         history_schema={"type":"function","function":{"name":"get_waybill_history","description":"查运单自版本留存启用以来的实际修改记录、前后内容、时间和操作者，按当前权限过滤。","parameters":{"type":"object","properties":{"waybill_number":{"type":"string","maxLength":80}},"required":["waybill_number"],"additionalProperties":False}}}
         routine_schema={"type":"function","function":{"name":"run_daily_routine","description":"主动扫一遍当前业务状态，挑出今天该盯的事：对账差异（钱对不上或该归属没落账）和回单催办（该收的关键回单还没收）。纯读、不改账，结果是候选不是结论，涉钱差异需有人确认。老板打开工作台、或用户问‘今天该盯什么/有什么要处理’时主动调用。","parameters":{"type":"object","properties":{"limit":{"type":"integer","minimum":1,"maximum":50}},"additionalProperties":False}}}
         scan_schema={"type":"function","function":{"name":"get_daily_routine_scan","description":"按扫描 ID 查询本人历史扫描候选，结果重新核查当前访问权限，历史状态不代表现在。","parameters":{"type":"object","properties":{"scan_id":{"type":"string","maxLength":160}},"required":["scan_id"],"additionalProperties":False}}}
-        capabilities = capability_catalog.tools()
+        capabilities = capability_catalog.tools(sys.modules[__name__])
         if user["role"] == "employee":
             capabilities = [tool for tool in capabilities
                             if tool["function"]["name"] not in {"update_fee_status", "send_message"}]
@@ -2262,9 +2263,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 # 即便角色有财务权限也不能对外宣称 financial_analysis 可用。
                 _enabled_modules=set(PRODUCT['modules'])
                 _fin_enabled=('finance' in _enabled_modules and _finance_scope(dict(user))!="none")
-                self._send(200,{**product_profile.public_profile(PRODUCT, user['role']),"user":{"id":user["id"],"display_name":user["name"],"salutation":agent_runtime.preferences(sys.modules[__name__],dict(user)).get("salutation",user["name"]),"role":user["role"]},"suggestions":integrity.suggestions(sys.modules[__name__],dict(user)),"capabilities":{"attachments":True,"voice":(ROOT/"models"/"whisper-tiny"/".ready.json").exists(),"financial_analysis":_fin_enabled,"skills":True,"durable_jobs":True,"team_operations":True}}); return
+                self._send(200,{**product_profile.public_profile(PRODUCT, user['role']),"user":{"id":user["id"],"display_name":user["name"],"salutation":agent_runtime.preferences(sys.modules[__name__],dict(user)).get("salutation",user["name"]),"role":user["role"]},"suggestions":integrity.suggestions(sys.modules[__name__],dict(user)) if _module_enabled("transport") else [{"label":"今天先做什么","prompt":"结合当前真实任务和企业规则，帮我安排今天的工作。"}],"capabilities":{"attachments":True,"voice":(ROOT/"models"/"whisper-tiny"/".ready.json").exists(),"financial_analysis":_fin_enabled,"skills":True,"durable_jobs":True,"team_operations":True}}); return
             if path=='/api/agent/today':
                 # 「Bot 先开口」：确定性扫账，不烧 token，给前端第一屏直接展示「今天该盯的事」。
+                if not _module_enabled("transport"):
+                    from capabilities import work_tasks
+                    self._send(200,work_tasks.today(sys.modules[__name__],dict(user))); return
                 result=agent_routine.run(sys.modules[__name__],dict(user),limit=20)
                 pending=agent_routine.get_bot_state(sys.modules[__name__],dict(user),include_done=True)
                 self._send(200,{"routine":result,"pending_state":pending}); return
@@ -3063,13 +3067,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Julong enterprise isolated test backend")
+    parser = argparse.ArgumentParser(description="Enterprise Bot product master")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("serve")
     p_user = sub.add_parser("user-add")
     p_user.add_argument("--username", required=True); p_user.add_argument("--name", required=True)
     p_user.add_argument("--role", required=True, choices=sorted(ROLES)); p_user.add_argument("--password-stdin", action="store_true")
     args = parser.parse_args()
+    # The product master must never silently start with the pilot identity/data.
+    # Explicit compatibility mode is only for legacy migration and old tests.
+    if os.environ.get("BOT_LEGACY_COMPAT") != "1":
+        if not os.environ.get("BOT_PROFILE") or not os.environ.get("DATA_DIR") or TENANT_ID == product_profile.LEGACY_ID:
+            parser.error("product master requires an explicit non-legacy BOT_PROFILE and DATA_DIR")
     if args.command == "user-add":
         password = sys.stdin.readline().rstrip("\r\n") if args.password_stdin else __import__("getpass").getpass("Password (12+ chars): ")
         add_user(args.username,args.name,args.role,password)
@@ -3081,7 +3090,7 @@ def main():
     class Server(http.server.ThreadingHTTPServer):
         daemon_threads = True
         allow_reuse_address = True
-    print(f"Julong test backend listening on {HOST}:{PORT}; database={DB_PATH}",flush=True)
+    print(f"Enterprise Bot listening on {HOST}:{PORT}; database={DB_PATH}",flush=True)
     with Server((HOST,PORT),Handler) as server:
         try: server.serve_forever()
         finally: agent_runtime.stop(sys.modules[__name__])
