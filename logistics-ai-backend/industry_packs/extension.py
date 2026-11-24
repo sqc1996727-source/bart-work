@@ -48,3 +48,30 @@ def execute(profile, host, user, name, arguments, key):
             raise TypeError("adapter must return a structured result")
         return True, dict(result)
     return False, None
+
+
+def initialize(profile, host):
+    """Run a registered adapter's idempotent, additive schema initialization."""
+    pack = get_pack(profile["industry"])
+    if profile["modules"] and pack.get("initialize"):
+        pack["initialize"](host, profile)
+
+
+def route(profile, host, user, method, path, query, body, key):
+    """Authenticated, namespaced industry routes; never override shared routes."""
+    prefix = "/api/industry/" + profile["industry"] + "/"
+    if not path.startswith(prefix):
+        return 404, {"error": "not_found"}
+    pack = get_pack(profile["industry"])
+    entry = pack.get("adapter_routes", {}).get((method, path))
+    if not entry:
+        return 404, {"error": "not_found"}
+    module = entry["module"]
+    if not _allowed(profile, user, module):
+        return 404, {"error": "not_found"}
+    if not any(path.startswith(p) for p in pack["route_groups"].get(module, ())):
+        return 404, {"error": "not_found"}
+    status, result = entry["execute"](host, user, query, body, key)
+    if not isinstance(status, int) or not isinstance(result, Mapping):
+        raise TypeError("adapter route must return status and structured result")
+    return status, dict(result)
