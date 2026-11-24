@@ -57,6 +57,8 @@ def bind_database(con, profile):
             raise RuntimeError("database contains a different enterprise")
     con.execute("CREATE TABLE IF NOT EXISTS product_installation(id INTEGER PRIMARY KEY CHECK(id=1), tenant_id TEXT NOT NULL)")
     con.execute("INSERT OR IGNORE INTO product_installation VALUES(1,?)", (tenant,))
+    if con.execute("SELECT tenant_id FROM product_installation WHERE id=1").fetchone()[0] != tenant:
+        raise RuntimeError("database belongs to a different enterprise")
 
 def public_profile(profile, role):
     return {"organization": {"name": profile["name"], "industry": profile["industry"]},
