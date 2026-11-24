@@ -1,6 +1,6 @@
 # 巨龙物流真实业务试点 · 部署准备与回滚方案（未执行，需授权后手动切换）
 
-> 本文件是准备方案，所有步骤已在隔离副本演练。**未经授权不得切换生产环境、不得覆盖真账。**
+> 本文件是准备方案。历史隔离演练和 152 项测试属于整改前验收分支；本次发布候选须重新验收。**未经授权不得切换生产环境、不得覆盖真账。**
 > 文档不写任何登录口令、API Key 或凭据；凭据只走运行期注入与本机钥匙串。
 
 ## 1. 部署拓扑（沿用现有，不新增服务）
@@ -17,13 +17,14 @@
 |---|---|---|
 | `DATA_DIR` | 企业数据目录（绝对路径） | 指向真账目录的**备份副本**做验证，切换时才指真账 |
 | `HOST` / `PORT` | 监听地址端口 | 内网试点 `127.0.0.1` 或内网 IP；生产须 HTTPS 反代 |
+| `BOT_STRICT_PILOT` | 正式入口与兼容入口切换 | 正式=1（serve 默认）；0 仅用于隔离的旧接口兼容测试 |
 | `COOKIE_SECURE` | 会话 Cookie Secure 属性 | 生产=1（默认）；仅本机 http 调试=0 |
 | `BOT_PROFILE` | 企业档案 JSON（含 modules 开关） | 巨龙 legacy 不设；新企业才设 |
 | `JL_AI_BASE_URL` / `JL_AI_MODEL` / `JL_AI_API_KEY` | 真模型 | 沿用已授权 token01；Key 进程内注入，不落盘 |
 | `JL_AI_TIMEOUT_SECONDS` | 模型超时 | 默认 30s |
 | `BOT_AGENT_ROUNDS/MODEL_CALLS/SECONDS/TOKENS/RETRIES` | Agent 执行边界 | 默认 48/80/1200/250000/2 |
 
-## 3. 部署前检查清单（逐项实测）
+## 3. 历史验收记录（整改前分支；非本次验收结论）
 
 - [x] 真账副本能被本分支直接打开：`init_db()` 建 `product_installation` 表并绑定 `julong-test`，原 3 用户、rev 69、8 票运单、3 份回单完整（表 32→34，无数据丢失）
 - [x] 原账号 `JLWL` 登录成功（口令不写进文档），前端 `/workspace/` 200
@@ -34,63 +35,29 @@
 - [x] 全量单元测试 152 项通过
 - [ ] 生产环境 HTTPS / Cookie Secure / 反代配置：需运维配置，本隔离环境未验
 
-## 4. 切换窗口操作顺序（需授权）
+## 4. 正式切换（需另行授权）
 
-记 `t0` = 允许写入新版本的时刻（建议选低峰，例如 21:30）。
+- 先完成 STABLE-PILOT-REVIEW.md 的隔离验收；更换曾公开暴露的真实密码、撤销旧会话，核实正式 HTTPS 和代理配置。
+- 停止旧服务、冻结写入及任务执行；使用 ledger_backup 保存并校验完整切换前快照，恢复到独立目录演练。
+- 保存旧版代码、运行参数和快照路径。仅获授权后切换到 release 分支，使用严格模式启动；/health 必须真实就绪。
+- 正式运行仅通过 /workspace/ 和持久任务队列。旧版页面保留兼容用途；必要人工录单沿用旧业务页面。凭据只在运行期注入。
 
-1. **冻结写入**：公告停用旧入口，确认无进行中的导入/审批（`/api/agent/jobs` 无排队）。
-2. **全量备份**：`scripts/ledger_backup.backup(data_dir, backup_dir)` 生成带 SHA256 manifest 的快照，校验通过。
-3. **恢复演练**：把该备份 `restore()` 到独立目录并启动试跑，确认 rev / 运单 / 回单 / 用户数一致。
-4. **记录切换基线**：`scripts/pilot_cutover.py export --data-dir <真账> --since <t0> --out <delta>`，先出一份空基线（此时应为 0 行），确认工具能在真账上只读运行。
-5. **切换**：停旧服务 → `DATA_DIR` 指真账 → 新版本启动（启动即幂等 `init_db()`，只加表不改数据）。
-6. **验收**：`/health` 200、`/workspace/` 200、老板登录、`/api/agent/today` 有候选、三角色权限正确。
-7. **重设调度/员工口令**，确认会话撤销生效。
-8. **保留**：旧版本代码、切换前备份、`t0` 值三者都写在交接单上——回滚全靠这三样。
+## 5. 回滚
 
-## 5. 回滚方案（三级，按破坏性从小到大）
+优先应用级回滚，但必须先验证旧代码能读取新数据库结构；不能仅凭表数或记录 ID 宣称兼容。任何回滚前停止服务并保存完整当前快照。
+如确需数据级恢复，先恢复到独立目录，比较完整数据及关联文件；出现差异时不得覆盖原库，也不得直接宣称无损。合并方案须经业务核对及授权。
 
-**原则：回滚优先只回应用不回数据。试点期间新增的业务数据一律先落增量包，再谈恢复。**
+## 6. 完整数据保全（取代原来的按时间增量方案）
 
-### L1 应用级回滚（默认，不丢数据）
-
-- 停新服务 → 用旧版本代码、`DATA_DIR` 仍指原真账目录启动。
-- 新版本只做了**加表**（`product_installation`、`routine_scans`、`workplace_memory` 等）与幂等列追加，旧版本读写 `work_state` 不受影响；多余表旧版本会忽略。
-- 启动后核对：rev、运单数、回单数、用户数与切换前一致；抽查 3 票运单详情。
-- 适用：新版本出现功能性故障、性能问题、权限异常。**这是唯一不需要动数据的回滚。**
-
-### L2 数据级回滚（仅当数据被写坏）
-
-1. 先 `pilot_cutover.py export --since <t0>` 导出试点期全部新增/变更行（几百行级别，秒级完成）。
-2. `pilot_cutover.py verify` 核对增量包与源库一致（哈希 + 行数）。
-3. `ledger_backup.restore(备份目录, 新目录)` 恢复到**新目录**，不覆盖原目录。
-4. `pilot_cutover.py compare --delta <增量包> --data-dir <恢复目录>`：列出"回滚会丢的行"。
-5. 按 compare 结果逐表人工确认合并（只并试点新增，不覆盖历史字段），合并后再 `verify` 一次。
-6. `DATA_DIR` 指向合并后的目录启动，核对业务数。
-
-### L3 灾难恢复（磁盘/库损坏）
-
-- 用最近一次 `ledger_backup` 快照 + 最近一次增量包重建；恢复后按 L2 第 4-6 步合并试点数据。
-
-### 回滚禁止项
-
-- 禁止把备份**直接拷回原目录**覆盖（会丢试点期数据且无法追）。
-- 禁止在未导出增量包的情况下 restore。
-- 禁止用 `rm`/覆盖方式处理真账目录。
-
-## 6. 试点期数据保全（每次回滚前必跑）
+在 logistics-ai-backend 下执行，停服后操作，输出目录必须尚不存在：
 
 ```bash
-# 1) 导出 t0 之后新增/变更的行（只读源库）
-python3 scripts/pilot_cutover.py export --data-dir <真账> --since <t0> --out /path/to/delta
-# 2) 核对增量包没坏、和源库一致（篡改或漏行会非零退出）
-python3 scripts/pilot_cutover.py verify --data-dir <真账> --delta /path/to/delta
-# 3) 回滚前比对：恢复出来的旧库缺哪些试点数据
-python3 scripts/pilot_cutover.py compare --delta /path/to/delta --data-dir <恢复目录>
+python3 scripts/pilot_cutover.py export --data-dir "$ISOLATED_DATA" --out "$SNAPSHOT"
+python3 scripts/pilot_cutover.py verify --data-dir "$ISOLATED_DATA" --delta "$SNAPSHOT"
+python3 scripts/pilot_cutover.py compare --data-dir "$RESTORED_DATA" --delta "$SNAPSHOT"
 ```
 
-- 覆盖库：`julong.sqlite3` 与 `ai/ai.sqlite3` 都会扫；按 `created_at/updated_at/effective_at/at` 判增量，行身份用 `id`/`key`/`rowid`。
-- 已演练：导出 441 行 → verify 通过；删 1 行模拟丢失 → compare 准确报出 `routine_scans: 1 行`；篡改增量文件 → verify 非零退出。
-- 建议节奏：切换当天、每天收工、每次发布前各出一次增量包，保留 7 天。
+旧 --since 参数仅为兼容保留；实际一律保全完整快照，不根据时间字段推测增量。compare 比较双向全表内容和受引用文件，非零退出代表存在差异或错误，必须核查。所有备份均含敏感企业数据，仅存受控目录，不上传仓库。保留旧备份及当前快照，不自动覆盖、删除或合并。
 
 ## 7. 真实成本（以网关日志实际扣费为准）
 
@@ -103,5 +70,5 @@ python3 scripts/pilot_cutover.py compare --delta /path/to/delta --data-dir <恢�
 
 ## 8. 试点判定与禁止项
 
-- 具备"内部授权 + 人工确认财务"的物流试点条件（见 REPORT.md）
+- 历史验收见 REPORT.md；当前发布候选须完成重新验收，尚未批准上线。
 - **禁止**：未经授权切换生产环境；直接改真账；关闭财务三步人审；用模拟模型冒充真模型验收
