@@ -1596,6 +1596,15 @@ class V3Tools:
             return tool.get("function",{}).get("name") not in blocked
         shared = ([t for t in tools if _keep(t)] + [t for t in extra if _keep(t)]
                   + [t for t in capabilities if _keep(t)] + [t for t in team_tools if _keep(t)])
+        if not _module_enabled("transport"):
+            for tool in shared:
+                function = tool["function"]
+                if function["name"] in {"create_task", "update_task"}:
+                    props = function["parameters"]["properties"]
+                    props.pop("waybill_number", None)
+                    props.pop("completion_condition", None)
+                    function["description"] = ("按用户交办创建真实工作任务。" if function["name"]=="create_task"
+                                               else "按当前角色权限更新工作任务；员工只更新分配给自己的任务。")
         extensions = industry_extension.list_tools(PRODUCT, dict(user))
         names = {t["function"]["name"] for t in shared}
         for tool in extensions:
@@ -1613,6 +1622,9 @@ class V3Tools:
         if _finance_scope(user)=="none" and _v3_output_has_explicit_price(json.dumps(arguments,ensure_ascii=False)):
             return {"error":"v3_financial_content_not_allowed"}
         user=dict(user)
+        if name in {"create_task", "update_task"} and not _module_enabled("transport"):
+            if arguments.get("waybill_number") is not None or arguments.get("completion_condition") is not None:
+                return {"error":"module_disabled"}
         handled, result = industry_extension.execute(PRODUCT, sys.modules[__name__], user,
                                                      name, arguments, idempotency_key)
         if handled:
