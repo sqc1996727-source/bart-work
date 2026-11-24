@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Isolated single-enterprise test backend for the Julong V9 workbench.
 
-Only Python's standard library is required. Run `python3 app.py serve`.
+Python 3.11+; install requirements.txt (media extras as needed). Run `python3 app.py serve`.
 """
 from __future__ import annotations
 
@@ -136,7 +136,7 @@ def now_iso() -> str:
 
 
 def db() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    DATA_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None, factory=ClosingConnection)
     try:
         con.row_factory = sqlite3.Row
@@ -150,6 +150,8 @@ def db() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    if TENANT_ID != product_profile.LEGACY_ID and not DB_PATH.exists() and DATA_DIR.exists() and any(DATA_DIR.iterdir()):
+        raise RuntimeError("refusing to initialize a new enterprise in a nonempty directory")
     with db() as con:
         product_profile.bind_database(con, PRODUCT)
         con.executescript("""
@@ -1476,7 +1478,9 @@ class V3Context:
             if projected.get("weight") not in (None,""): projected["weight_unit"]="吨"
             associated_fees=[self._pick(x,self._FEE_FIELDS) for x in fees if isinstance(x,dict) and str(x.get("number",""))==number and not self._protected_freight_type(x.get("type"))]
             receipt=next((x for x in receipts if isinstance(x,dict) and str(x.get("number",""))==number),None)
-            projected_record={"waybill":projected,"fees":associated_fees,"receipt":self._receipt_view(receipt)}
+            projected_record={"waybill":projected,"disabled_modules":sorted(set(LOGISTICS_MODULE_TOOLS)-_enabled_modules())}
+            if _module_enabled("finance"):projected_record["fees"]=associated_fees
+            if _module_enabled("receipt"):projected_record["receipt"]=self._receipt_view(receipt)
             searchable=json.dumps(projected_record,ensure_ascii=False,sort_keys=True).casefold()
             score=relevance(tokens,searchable)
             if (number and re.search(r"(?<![0-9A-Za-z_-])"+re.escape(number.casefold())+r"(?![0-9A-Za-z_-])",query_text)) or score>=2:
@@ -1548,7 +1552,7 @@ class V3Tools:
     recovery_safe_tools=frozenset({
         "list_waybills","get_waybill_history","get_recent_changes","get_operational_summary",
         "get_daily_routine_scan","review_business_records","list_capabilities","read_skill",
-        "find_records","search_workplace_memory","search_company_knowledge","list_colleagues",
+        "find_records","recall_work_result","search_workplace_memory","search_company_knowledge","list_colleagues",
         "get_case_workspace","get_agent_usage","get_agent_health","analyze_table",
         "create_task","update_task","update_receipt_status","update_fee_status","send_message",
         "handoff_case","share_case_file","publish_company_knowledge","manage_event_alerts",
@@ -1706,6 +1710,9 @@ class V3Tools:
                 if isinstance(issue,dict):
                     issues.append({k:issue[k] for k in ("code","severity","waybill_number") if k in issue})
             safe={"waybill":safe_waybill,"fees":safe_fees,"receipt":safe_receipt,"tasks":safe_tasks,"inspection":{"issues":issues},"state_rev":result.get("state_rev")}
+            safe["disabled_modules"]=sorted(set(LOGISTICS_MODULE_TOOLS)-_enabled_modules())
+            for module in ("receipt","finance"):
+                if not _module_enabled(module):safe.pop("fees" if module=="finance" else "receipt",None)
             number=str(safe_waybill.get("number","")); evidence_id=f"v3:waybill:{number}:r{result.get('state_rev',0)}"
             safe["evidence"]=[{"evidence_id":evidence_id,"text":json.dumps(safe,ensure_ascii=False,separators=(",",":")),"source":"waybill_case","metadata":{"waybill_number":number,"state_rev":result.get("state_rev")}}]
             return safe
@@ -2896,6 +2903,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 else:
                     owned_numbers=set()
                 for key in STATE_KEYS:
+                    if key in _module_state_keys():
+                        merged[key]=old_state[key]
+                        continue
                     try: old_value = json.loads(old_state[key])
                     except Exception: old_value = []
                     new_value = parsed[key]
