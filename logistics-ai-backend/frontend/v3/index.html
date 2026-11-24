@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#000000"><meta name="color-scheme" content="dark"><base href="/agent-v3/"><title>巨龙物流｜内部工作台</title><link rel="stylesheet" href="assets/theme.css"></head>
+<body>
+<div class="ambient" aria-hidden="true"></div>
+<div class="app" id="app">
+<header class="topbar reveal">
+ <div class="brand"><span class="brand-name" id="brand-name">巨龙物流</span><span class="brand-sub">内部工作台</span></div>
+ <div class="top-status" id="top-status">正在扫账</div>
+ <div class="top-actions"><a class="workbench-link" id="workbench-link" href="/manual-v9" hidden>回手动工作台</a><button type="button" class="tiny" id="agent-updates" hidden>新进展</button><button type="button" class="tiny" id="agent-usage" hidden>使用情况</button><button type="button" class="tiny" id="agent-routines" hidden>定时任务</button><button type="button" class="tiny" id="history">历史</button><button type="button" class="tiny solid" id="new-chat">新对话</button><button type="button" class="identity" id="identity" aria-label="当前登录用户，点击退出">·</button></div>
+</header>
+<main class="stage">
+ <section class="welcome reveal" id="welcome">
+  <div class="hero">
+   <h1 class="hero-date" id="welcome-title">今天</h1>
+   <p class="hero-hello" id="hero-hello"></p>
+   <div class="hero-count" id="hero-count" hidden><span class="lens-sheen" aria-hidden="true"></span><span class="hero-num" id="today-count">0</span><span class="hero-unit">件等你处理</span></div>
+   <span class="sr-only" id="today-count-status" role="status" aria-live="polite"></span>
+   <p class="hero-summary" id="brief-line"></p>
+  </div>
+  <div class="route" aria-hidden="true"><span class="route-start"></span><span class="route-stop s1"></span><span class="route-stop s2"></span><span class="route-end"></span></div>
+  <div class="list-head"><span class="list-title">今日该盯的事</span><span class="list-count" id="list-count"></span></div>
+  <div class="today-cards" id="today-cards"></div>
+  <p class="brief-note" id="brief-note" hidden></p>
+ </section>
+ <div class="talk-header" id="talk-header"><div><strong>与企业智能助理的对话</strong><span>可以接着问“为什么”“哪一票”“那怎么办”</span></div><div class="talk-mini" id="talk-state">对话进行中</div></div>
+ <section class="dialogue" id="dialogue" role="log" aria-live="polite" aria-label="连续业务对话"></section>
+ <div class="connection-banner" id="connection-banner" role="status"></div>
+ <div class="compose-zone reveal"><form class="composer" id="ask-form"><textarea id="query" rows="2" placeholder="查运单、对账、找资料，直接说。文件也可以拖进来。" aria-label="向企业智能助理提问"></textarea><div class="attachment-list" id="attachment-list"></div><div class="compose-actions"><div class="attach-wrap"><button type="button" id="attach" class="attach-btn" aria-label="上传文件" title="添加业务文件" hidden><svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11.5 11.6 19.8a5.1 5.1 0 0 1-7.2-7.2L14.9 2.2a3.3 3.3 0 0 1 4.7 4.7L8.7 17.8a1.6 1.6 0 0 1-2.3-2.3L16 5.9"/></svg></button><input type="file" id="attachment-input" multiple accept=".pdf,.xls,.xlsx,.csv,.docx,.png,.jpg,.jpeg,.webp,.txt,.md,.tsv,.wav,.m4a,.mp3,.ogg,.webm,.mp4" hidden><button type="button" id="voice" class="voice-btn" aria-label="按住说话，松开发送；电脑点击开始和结束" title="按住说话，松开发送" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M6 11.5a6 6 0 0 0 12 0M12 17.5V21m-3 0h6"/></svg></button><button type="button" id="add-context" class="tiny" title="当前处理结束后，继续发送补充内容" hidden>发送补充</button><div class="compose-helper" id="compose-helper"></div></div><button type="submit" class="send" id="send" aria-label="发送问题" title="发送问题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></button></div></form></div>
+ <div class="suggestions reveal" id="suggestions"><button class="suggest" data-ask="今天有哪些事情值得我关注？">今天有什么事</button><button class="suggest" data-ask="帮我核对进仓费">帮我核对费用</button><button class="suggest" data-ask="哪些纸质回单没回来？">查未回的回单</button><button class="suggest" data-ask="本月运单和回单情况怎么样？">本月业务情况</button></div>
+ <footer class="footer reveal"><div class="footer-note" id="footer-note">连接企业业务服务中</div></footer>
+</main>
+</div>
+<div class="drawer-shade" id="drawer-shade"></div><aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="业务案卷" aria-hidden="true"><div class="drawer-top"><div class="drawer-label" id="drawer-label">业务案卷</div><button class="close-drawer" id="close-drawer" aria-label="关闭案卷">×</button></div><div id="drawer-content"></div></aside>
+<div class="history-shade" id="history-shade" aria-hidden="true"><section class="history-panel" role="dialog" aria-modal="true" aria-labelledby="history-title"><div class="drawer-top"><div><div class="drawer-label">当前账号</div><h2 id="history-title">历史对话</h2></div><button type="button" class="close-drawer" id="close-history" aria-label="关闭历史">×</button></div><div class="history-items" id="history-items"><p class="drawer-note">正在读取历史</p></div><button type="button" class="tiny history-more" id="history-more">更早对话</button></section></div>
+<div class="auth-shade" id="auth-shade" aria-hidden="true"><form class="auth-panel" id="login-form" autocomplete="on"><div class="drawer-label">巨龙物流 · 内部工作台</div><h2>登录业务工作台</h2><p class="drawer-sub">用现有企业账号登录。能看到哪些数据，由服务端账号权限决定。</p><div class="auth-error" id="login-error" role="alert" hidden></div><label for="login-username">账号</label><input id="login-username" name="username" autocomplete="username" required><label for="login-password">密码</label><input id="login-password" name="password" type="password" autocomplete="current-password" required><button type="submit" class="tiny auth-submit" id="login-submit">登录</button></form></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="voice-prompt" class="voice-prompt" hidden role="status" aria-live="polite"><span class="voice-dot" aria-hidden="true"></span><span id="voice-prompt-text">松开发送 · 上滑取消</span></div>
+<script src="assets/backend-adapter.js"></script>
+<script src="assets/app.js"></script>
+<div id="agent-notifications" hidden role="region" aria-label="我的新进展"></div></body></html>
