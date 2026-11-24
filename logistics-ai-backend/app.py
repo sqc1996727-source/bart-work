@@ -47,6 +47,63 @@ SESSION_SECONDS = 30 * 24 * 60 * 60
 PASSWORD_ITERATIONS = 310_000
 MAX_BODY = 2 * 1024 * 1024
 MAX_MULTIPART_BODY = 11 * 1024 * 1024
+
+# ---- 模块级服务端约束 --------------------------------------------------------
+# INDUSTRY_PACKS 的 modules 是企业开关。关掉一个模块，必须同时关掉它的业务工具
+# 和 HTTP 接口，否则「界面没有、服务端还能调」就是假隔离。同一行业内关模块同理。
+# 一个工具只归属一个模块，不重复登记，避免同名不同物导致口径分叉。
+LOGISTICS_MODULE_TOOLS = {
+    "transport": frozenset({
+        "search_waybills", "get_waybill", "get_waybill_business_status",
+        "list_waybills", "get_waybill_history", "get_recent_changes",
+        "get_operational_summary", "run_daily_routine", "get_daily_routine_scan",
+        "generate_waybill_report", "preview_waybill_import", "commit_waybill_import",
+        "get_case_workspace", "handoff_case", "share_case_file",
+    }),
+    "receipt": frozenset({"update_receipt_status"}),
+    "finance": frozenset({"update_fee_status", "review_business_records"}),
+}
+LOGISTICS_MODULE_ROUTES = {
+    "transport": ("/api/waybills/", "/api/agent/cases/", "/api/agent/routine-scans/"),
+    "receipt": (),
+    "finance": ("/api/finance/", "/api/reconciliation/"),
+}
+# 关掉财务模块时，状态接口也不能再吐出费用、票据、差异、月度汇总域。
+LOGISTICS_MODULE_STATE_KEYS = {
+    "finance": ("julong_demo_month_v1", "julong_demo_fees_v1", "julong_demo_bills_v1",
+                "julong_demo_diffs_v1", "julong_demo_ai_v1"),
+    "receipt": ("julong_demo_receipts_v1",),
+}
+
+
+def _enabled_modules():
+    """本企业实际启用的模块；行业包不匹配时视为全部关闭。"""
+    if not product_profile.industry_pack(PRODUCT["industry"])["business_tools"]:
+        return frozenset()
+    return frozenset(PRODUCT["modules"])
+
+
+def _module_enabled(module):
+    return module in _enabled_modules()
+
+
+def _blocked_tool_names():
+    """本企业不可用的业务工具：行业不匹配则全部，否则只关被禁用模块的。"""
+    enabled = _enabled_modules()
+    blocked = set()
+    for module, names in LOGISTICS_MODULE_TOOLS.items():
+        if module not in enabled:
+            blocked.update(names)
+    return frozenset(blocked)
+
+
+def _module_state_keys():
+    """模块关闭时，状态接口需要清空的业务域。"""
+    enabled = _enabled_modules()
+    return {key for module, keys in LOGISTICS_MODULE_STATE_KEYS.items()
+            if module not in enabled for key in keys}
+
+
 STATE_KEYS = (
     "julong_demo_waybills_v2", "julong_demo_recipients_v2",
     "julong_demo_dispatch_v5", "julong_demo_month_v1",
@@ -1082,6 +1139,7 @@ def _ordinary_waybill(value):
 
 def _visible_state(state: dict[str, str], role: str, principal_id: str | None = None) -> dict[str, str]:
     result = {}
+    suppressed = _module_state_keys()
     own_numbers=None
     if role=="employee" and principal_id:
         own_numbers=_employee_owned_numbers(json.loads(state.get(STATE_KEYS[0],"[]")),principal_id)
@@ -1103,6 +1161,9 @@ def _visible_state(state: dict[str, str], role: str, principal_id: str | None = 
                 value=[]
         if own_numbers is not None and key in {STATE_KEYS[0],STATE_KEYS[4],STATE_KEYS[5]}:
             value=[x for x in value if isinstance(x,dict) and str(x.get("number","")) in own_numbers]
+        if key in suppressed:
+            # 模块没启用，这条业务域不属于本企业：返回空域，不泄露记录存在。
+            value = []
         result[key] = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
     return result
 
@@ -1131,7 +1192,7 @@ def _authenticated_persona(*, tenant_id, principal_id):
             bot_state_text = "\n\n你最近的任务状态（历史扫描可用 get_daily_routine_scan 按 scan_id 读取；状态可能变化）：" + json.dumps(pending, ensure_ascii=False)
     except Exception:
         pass
-    return "当前企业："+PRODUCT["name"]+"；行业："+PRODUCT["industry"]+"。\n"+core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n"+ ("你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
+    return "当前企业："+PRODUCT["name"]+"；行业："+PRODUCT["industry"]+"。\n"+core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（每次必须显式给 action，不能省略；记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version；撤回用 forget）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n"+ ("你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
        if product_profile.industry_pack(PRODUCT["industry"])["business_tools"] else
        "你是会主动干活的 Bot，不是问一句答一句。本企业未启用行业业务工具包，只有通用能力（记忆、任务、文件、表格分析、定时跟进、团队协作）。老板或管理层问「今天该盯什么」时，用现有通用能力核对真实工作任务与已记规则，如实说明哪些业务数据尚未接入，不虚构行业结果。")
 
@@ -1252,11 +1313,13 @@ class WorkbenchTools:
         functions.append({"type":"function","function":{"name":"update_task","description":"更新任务字段；员工只能更新分配给自己的任务状态，任务管理员可变更结构化完成条件。不要根据备注猜测完成状态。","parameters":{"type":"object","properties":task_properties,"required":["task_id"]}}})
         if user["role"]=="owner_finance":
             functions.append({"type":"function","function":{"name":"create_business_rule_version","description":"仅按owner明确要求新增一条企业规则版本；规则不可覆盖旧版本。不要将聊天建议自动保存为规则。rule_key仅允许小写字母、数字、点、下划线和连字符，且必须以小写字母或数字开头。","parameters":{"type":"object","properties":{"rule_key":{"type":"string","maxLength":80,"pattern":"^[a-z0-9][a-z0-9._-]{1,79}$","description":"小写英数开头；仅小写英数、点、下划线、连字符，长度2-80"},"layer":{"type":"string","enum":["foundation","calculation","conversation"]},"title":{"type":"string","maxLength":160},"content":{"type":"string","maxLength":8000},"effective_at":{"type":"string","description":"YYYY-MM-DD，可省略为今天"},"finance_only":{"type":"boolean"}},"required":["rule_key","layer","title","content"]}}})
-        return functions
+        blocked = _blocked_tool_names()
+        return [f for f in functions if f["function"]["name"] not in blocked]
 
     def execute(self, name, arguments, *, tenant_id, principal_id, idempotency_key):
         user=self._principal(tenant_id,principal_id)
         if not user: raise PermissionError("identity is not active")
+        if name in _blocked_tool_names(): return {"error":"forbidden"}
         args=dict(arguments)
         if name in {"search_waybills","get_waybill"}:
             with db() as con:
@@ -1653,31 +1716,21 @@ class V3Tools:
         if user["role"] == "employee":
             capabilities = [tool for tool in capabilities
                             if tool["function"]["name"] not in {"update_fee_status", "send_message"}]
-        # 行业包隔离：未注册行业的企业不获得物流业务工具，
-        # 只保留通用内核能力（记忆/任务/文件/分析/定时/团队）。
-        pack = product_profile.industry_pack(PRODUCT["industry"])
+        extra = [recent_schema,summary_schema,list_schema,review_schema,history_schema,routine_schema,scan_schema]
         # 团队/协作工具里也混着物流专属工具（案卷交接、运单关联、运单导入），
-        # 非物流企业必须一并过滤，不能因为来自 team 模块就漏掉。
+        # 必须按同一张模块表过滤，不能因为来自 team 模块就漏掉。
         team_tools = agent_team.tools()
-        if not pack["business_tools"]:
-            logistics_names = {
-                "search_waybills","get_waybill","get_waybill_business_status",
-                "update_receipt_status","generate_waybill_report","list_waybills",
-                "review_business_records","get_waybill_history","run_daily_routine",
-                "get_daily_routine_scan","get_recent_changes","get_operational_summary",
-                "update_fee_status","commit_waybill_import","preview_waybill_import",
-                "get_case_workspace","handoff_case","share_case_file",
-            }
-            tools = [t for t in tools if t.get("function",{}).get("name") not in logistics_names]
-            extra = []
-            capabilities = [t for t in capabilities if t["function"]["name"] not in logistics_names]
-            team_tools = [t for t in team_tools if t.get("function",{}).get("name") not in logistics_names]
-        else:
-            extra = [recent_schema,summary_schema,list_schema,review_schema,history_schema,routine_schema,scan_schema]
-        return tools+extra+capabilities+team_tools
+        blocked = _blocked_tool_names()
+        def _keep(tool):
+            return tool.get("function",{}).get("name") not in blocked
+        return ([t for t in tools if _keep(t)] + [t for t in extra if _keep(t)]
+                + [t for t in capabilities if _keep(t)] + [t for t in team_tools if _keep(t)])
     def execute(self, name, arguments, *, tenant_id, principal_id, idempotency_key):
         user=self.base._principal(tenant_id,principal_id)
         if not user: return {"error":"forbidden"}
+        if name in _blocked_tool_names():
+            # 模块没启用：即使模型硬报工具名也不执行，不按工具不存在报错以免泄露存在性。
+            return {"error":"forbidden"}
         if _finance_scope(user)=="none" and _v3_output_has_explicit_price(json.dumps(arguments,ensure_ascii=False)):
             return {"error":"v3_financial_content_not_allowed"}
         user=dict(user)
@@ -2377,14 +2430,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     @staticmethod
     def _industry_route_denied(path):
-        """行业包未启用物流时，物流业务接口一律不可达（不泄露接口存在）。"""
-        if product_profile.industry_pack(PRODUCT["industry"])["business_tools"]:
-            return False
-        logistics_prefixes = (
-            "/api/finance/candidates", "/api/reconciliation/", "/api/waybills/",
-            "/api/agent/cases/", "/api/agent/routine-scans/",
-        )
-        return path.startswith(logistics_prefixes)
+        """行业包或模块未启用的业务接口一律不可达（不泄露接口存在）。"""
+        enabled = _enabled_modules()
+        for module, prefixes in LOGISTICS_MODULE_ROUTES.items():
+            if module in enabled or not prefixes:
+                continue
+            if path.startswith(prefixes):
+                return True
+        return False
 
     def do_GET(self):
         path = urlsplit(self.path).path

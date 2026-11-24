@@ -36,8 +36,8 @@ python3 app.py serve        # 监听 127.0.0.1:3000
 ```
 
 - 新前端：`http://127.0.0.1:3000/agent-v4/`
-- 老板账号：`JLWL` / `<TEST_PASSWORD>`
-- 管理账号：`JLWLJL`　员工账号：`JLWLWL`（密码同老板，未验证）
+- 老板账号：`JLWL`（口令不入文档，向负责人索取）
+- 管理账号：`JLWLJL`　员工账号：`JLWLWL`（原登记"密码同老板"实测不成立，试点前需重设）
 - 老手动台：`http://127.0.0.1:3000/manual-v9`
 
 **启动服务必须用后台方式**（`run_in_background: true`），普通 Bash 调用结束后进程会被回收。

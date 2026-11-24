@@ -29,7 +29,10 @@ def save(host,user,args,conversation_id):
  date.fromisoformat(start)
  if end and date.fromisoformat(end)<date.fromisoformat(start):raise ValueError()
  action=args.get('action')
- if action is not None and action not in {'save','note','forget'}:raise ValueError()
+ # 动作必须显式声明。此前缺省 action 会按 kind 推断成 save/note，
+ # 等于让"随口说的规则"绕过显式写入契约自动落成正式版本，必须堵死。
+ if action is None:raise ValueError('explicit_action_required')
+ if action not in {'save','note','forget'}:raise ValueError()
  # forget 独立处理：撤回不需要 expected_version 匹配当前版本，
  # 也不应被 save/rule 的契约约束误伤。个人偏好本人可撤回，
  # 企业记忆仅授权岗位可撤回，全部留痕。
@@ -53,13 +56,11 @@ def save(host,user,args,conversation_id):
   return {'forgotten':True,'topic':topic}
  # 契约层防御：Agent 常把"主动沉淀"调成 save 却漏 expected_version。
  # 实际行为（与 catalog schema 一致）：
+ #  - action 必须显式传，缺省一律拒绝（explicit_action_required），不推断动作；
  #  - action=note：仅限 preference/experience/lead，无需版本，走同一套权限/隔离/SECRET/留痕；
  #  - action=save：仅限 kind=rule 且带合法 expected_version，按版本并发控制写入正式规则；
- #  - 缺省 action：kind=rule 且带合法版本才按 save，否则按 note；
  #  - action=forget：上面已独立处理，不经过本节版本校验。
  expected=args.get('expected_version')
- if action is None:
-  action='save' if (kind=='rule' and type(expected) is int and expected>=0) else 'note'
  if action=='save' and kind!='rule':raise ValueError('formal_save_requires_rule_kind')
  if action=='save' and type(expected) is not int:raise ValueError('formal_save_requires_expected_version')
  if scope=='company' and user['role']=='dispatcher' and action!='note':raise PermissionError()

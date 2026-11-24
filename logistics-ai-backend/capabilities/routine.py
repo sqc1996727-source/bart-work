@@ -247,8 +247,12 @@ def _run_in_transaction(host, user, *, limit, con):
         malformed_payload = True
         state = {}
     rev = state_row["rev"]
-    relevant = ["julong_demo_waybills_v2", "julong_demo_receipts_v1"]
-    if user.get("role") != "employee":
+    # 模块没启用时，扫账不能把该模块的业务域读出来，否则模块开关形同虚设。
+    enabled = getattr(host, "_module_enabled", lambda module: True)
+    finance_on = bool(enabled("finance"))
+    receipt_on = bool(enabled("receipt"))
+    relevant = ["julong_demo_waybills_v2"] + (["julong_demo_receipts_v1"] if receipt_on else [])
+    if user.get("role") != "employee" and finance_on:
         relevant += ["julong_demo_fees_v1", "julong_demo_diffs_v1", "julong_demo_bills_v1"]
     invalid = []
     source_status = {}
@@ -279,11 +283,11 @@ def _run_in_transaction(host, user, *, limit, con):
     else:
         receipts = _decode(state, "julong_demo_receipts_v1")
 
-    if user.get("role") != "employee":
+    if user.get("role") != "employee" and finance_on:
         fees = _decode(state, "julong_demo_fees_v1")
         diffs = _decode(state, "julong_demo_diffs_v1")
 
-    if user.get("role") != "employee":
+    if user.get("role") != "employee" and finance_on:
         safe_fees = None if "julong_demo_fees_v1" in invalid else fees
         safe_diffs = None if "julong_demo_diffs_v1" in invalid else diffs
         safe_bills = None if "julong_demo_bills_v1" in invalid else _decode(state, "julong_demo_bills_v1")
@@ -291,12 +295,24 @@ def _run_in_transaction(host, user, *, limit, con):
         diff_items, diff_guard = _diff_routine(safe_state, safe_fees, safe_diffs, safe_bills, host=host)
     else:
         diff_items, diff_guard = [], None
-    candidates = diff_items + (_receipt_routine(state, receipts) if not any(k in invalid for k in ("julong_demo_waybills_v2", "julong_demo_receipts_v1")) else [])
+    receipt_items = (_receipt_routine(state, receipts)
+                     if receipt_on and not any(k in invalid for k in ("julong_demo_waybills_v2", "julong_demo_receipts_v1"))
+                     else [])
+    candidates = diff_items + receipt_items
 
     # 按类别计数，方便模型一句话说清「今天有几类事、各几件」
     by_routine = Counter(c["routine"] for c in candidates)
 
-    coverage = "waybills+receipts" if user.get("role") == "employee" else "waybills+fees+diffs+bills+receipts"
+    parts = ["waybills"]
+    if receipt_on:
+        parts.append("receipts")
+    if user.get("role") != "employee" and finance_on:
+        parts += ["fees", "diffs", "bills"]
+    coverage = "+".join(parts)
+    if not finance_on and user.get("role") != "employee":
+        coverage += ";finance_module_disabled"
+    if not receipt_on:
+        coverage += ";receipt_module_disabled"
     note = "仅候选，未经确认不视为业务结论；涉钱差异需有人确认并留痕。"
     if user.get("role") == "employee":
         note = "仅显示本人可访问运单的回单催办候选。"
