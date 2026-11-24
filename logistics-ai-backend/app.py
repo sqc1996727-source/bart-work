@@ -1605,7 +1605,11 @@ class V3Tools:
             try: return update_fee_status_record(user,arguments,idempotency_key)
             except PermissionError: return {"error":"forbidden"}
             except LookupError: return {"error":"not_found_or_not_authorized"}
-            except ValueError: return {"error":"invalid_request"}
+            except ValueError as exc:
+                # Only known business validation codes are safe to expose.
+                # A rejected candidate never authorizes a different financial action.
+                from finance_confirmation import candidate_rejection
+                return candidate_rejection(exc)
         team_result=agent_team.execute(sys.modules[__name__],user,name,arguments,idempotency_key)
         if team_result is not None:return team_result
         capability=agent_runtime.execute(sys.modules[__name__],user,name,arguments,idempotency_key)
