@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>巨龙物流 · 业务工作台</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#eef0f2;color:#1b2530;
+       font:14px/1.6 "PingFang SC","Microsoft YaHei",-apple-system,sans-serif}
+  .card{width:min(380px,calc(100% - 32px));background:#fff;border:1px solid #dde2e7;border-radius:6px;padding:28px 28px 24px}
+  .brand{display:flex;align-items:center;gap:10px;margin-bottom:22px}
+  .sign{width:34px;height:34px;border-radius:4px;background:#1b2530;color:#fff;display:grid;place-items:center;
+        font:600 13px/1 ui-monospace,Menlo,monospace}
+  h1{font-size:18px;font-weight:600;margin:0}
+  .sub{font-size:12px;color:#7a8794;margin:2px 0 0}
+  label{display:block;font-size:13px;color:#4a5866;margin:14px 0 5px}
+  input{width:100%;height:40px;padding:0 11px;border:1px solid #dde2e7;border-radius:4px;background:#fff;
+        color:#1b2530;font-size:14px;outline:0}
+  input:focus{border-color:#1f5c9e;box-shadow:0 0 0 3px rgba(31,92,158,.12)}
+  button{width:100%;height:40px;margin-top:20px;border:0;border-radius:4px;background:#1f5c9e;color:#fff;
+         font-size:14px;font-weight:600;cursor:pointer}
+  button:hover{background:#174a80}
+  button:disabled{opacity:.6;cursor:default}
+  .err{margin-top:12px;font-size:13px;color:#b03a2e;min-height:20px}
+  .tip{margin-top:18px;padding-top:14px;border-top:1px solid #eaedf0;font-size:12px;color:#7a8794;line-height:1.7}
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="on">
+  <div class="brand"><div class="sign">JL</div><div><h1>巨龙物流业务工作台</h1><div class="sub">一个账号，手动台与 AI 助理都能用</div></div></div>
+  <label for="u">账号</label>
+  <input id="u" name="username" autocomplete="username" required autofocus>
+  <label for="p">密码</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit" id="b">登录</button>
+  <div class="err" id="e" role="status"></div>
+  <div class="tip">账号由管理员统一开通。登录后进入手动台，顶部往下拖即可打开 AI 助理。</div>
+</form>
+<script>
+(function(){
+  var f=document.getElementById('f'), b=document.getElementById('b'), e=document.getElementById('e');
+  f.addEventListener('submit',function(ev){
+    ev.preventDefault(); e.textContent=''; b.disabled=true; b.textContent='登录中…';
+    fetch('/api/login'+location.search,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:document.getElementById('u').value.trim(),
+                           password:document.getElementById('p').value})})
+      .then(function(r){return r.json().then(function(d){return {ok:r.ok,d:d}})})
+      .then(function(x){
+        if(x.ok){location.href='/manual-v9';return}
+        e.textContent='账号或密码不对，请重试。'; b.disabled=false; b.textContent='登录';
+      })
+      .catch(function(){e.textContent='连不上服务，请稍后重试。'; b.disabled=false; b.textContent='登录'});
+  });
+})();
+</script>
+</body>
+</html>
