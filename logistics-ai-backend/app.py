@@ -706,6 +706,8 @@ def _sync_business_tasks(con, actor, state):
     rows = con.execute("SELECT * FROM tasks WHERE completion_condition IS NOT NULL OR completion_origin='business'").fetchall()
     changed_at = now_iso()
     for row in rows:
+        if row["completion_condition"]=="receipt_delivered" and not _module_enabled("receipt"): continue
+        if row["completion_condition"]=="fees_confirmed" and not _module_enabled("finance"): continue
         met = _task_condition_met(row["completion_condition"], row["waybill_number"], state)
         if met and row["status"] in {"open", "in_progress"}:
             con.execute("UPDATE tasks SET status='done',completion_origin='business',updated_at=? WHERE id=?",
@@ -724,6 +726,8 @@ def _validate_task_condition(con, condition, waybill_number):
         return
     if condition not in TASK_COMPLETION_CONDITIONS:
         raise ValueError("invalid_completion_condition")
+    if not _module_enabled("transport") or not _module_enabled("receipt" if condition=="receipt_delivered" else "finance"):
+        raise ValueError("module_disabled")
     if not waybill_number:
         raise ValueError("completion_condition_requires_waybill")
     row = con.execute("SELECT payload FROM work_state WHERE id=1").fetchone()
@@ -1541,6 +1545,9 @@ def _v3_operational_summary(user,*,record_audit=True):
             "receipts":receipt_counts,"fees":{"records":len(visible_fees),"by_status":dict(fee_counts)},
             "tasks":{"total":len(tasks),"by_status":dict(task_counts)},
             "note":"此汇总只包含运营数量与状态，不包含厂家运费、费用金额或利润；数据来自当前work_state与tasks快照。"}
+    result["disabled_modules"]=sorted(set(LOGISTICS_MODULE_TOOLS)-_enabled_modules())
+    for module,key in (("receipt","receipts"),("finance","fees")):
+        if not _module_enabled(module): result.pop(key,None)
     result["evidence"]=[{"evidence_id":f"v3:operational-summary:r{rev}","text":json.dumps(result,ensure_ascii=False,separators=(",",":")),"source":"operational_summary","metadata":{"scope":result["scope"],"state_rev":rev}}]
     return result
 
@@ -1666,6 +1673,14 @@ class V3Tools:
         "commit_waybill_import","schedule_followup"
     })
     def __init__(self): self.base=WorkbenchTools()
+    def recovery_permitted(self, event, request):
+        if not event["job_id"]:
+            return not os.environ.get("BOT_STRICT_PILOT", "").lower() in {"1","true","yes"}
+        with db() as con:
+            row=con.execute("SELECT state,cancel_requested FROM agent_jobs WHERE id=? AND tenant_id=? AND owner_id=?",
+                            (event["job_id"],request.tenant_id,request.principal_id)).fetchone()
+        return bool(row and not row["cancel_requested"] and row["state"]!="cancelled")
+
     def list_tools(self, *, tenant_id, principal_id):
         user=self.base._principal(tenant_id,principal_id)
         if not user: return []
@@ -2222,12 +2237,12 @@ def inspect_business(user, *, snapshot=None, tasks_snapshot=None):
         try:
             if doc.get("weight") in (None,"") or not float(doc.get("weight"))>=0: missing.append("weight")
         except (TypeError,ValueError): missing.append("weight")
-        if user["role"]=="owner_finance" and doc.get("amount") in (None,""): missing.append("amount")
+        if user["role"]=="owner_finance" and _module_enabled("finance") and doc.get("amount") in (None,""): missing.append("amount")
         if missing: add("waybill_anomaly",number,"运单缺少必填字段",{"fields":sorted(set(missing))},"warning",str(doc.get("created","")))
         rec=receipt_by.get(number,{})
         delivered=rec.get("delivered") if isinstance(rec,dict) else None
-        if not delivered or delivered.get("off"):
-            add("unreturned_receipt",number,"厂家回单原件尚未交付",{"photo":bool(rec.get("photo") and not rec["photo"].get("off")),"paper":bool(rec.get("paper") and not rec["paper"].get("off")),"delivered":False},"warning",str(doc.get("date","")))
+        if _module_enabled("receipt") and not receipt_state.active(delivered):
+            add("unreturned_receipt",number,"厂家回单原件尚未交付",{"photo":receipt_state.active(rec.get("photo")),"paper":receipt_state.active(rec.get("paper")),"delivered":False},"warning",str(doc.get("date","")))
     active_fees=[x for x in fees if isinstance(x,dict) and x.get("status")!="作废"]
     fee_groups={}
     for fee in active_fees:
@@ -2417,7 +2432,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except LookupError: self._send(404,{'error':'not_found'})
             return
         if path == "/health":
-            self._send(200, {"status": "ok"}); return
+            try:
+                with db() as con:
+                    con.execute("SELECT rev FROM work_state WHERE id=1").fetchone()
+                    con.execute("SELECT count(*) FROM agent_jobs").fetchone()
+                worker=agent_runtime._WORKERS.get(str(DB_PATH))
+                worker_alive=bool(worker and worker[0].is_alive())
+                configured=all(os.environ.get(k) for k in ("JL_AI_BASE_URL","JL_AI_MODEL","JL_AI_API_KEY"))
+                strict=os.environ.get("BOT_STRICT_PILOT","").lower() in {"1","true","yes"}
+                ready=worker_alive and configured
+                self._send(200 if ready or not strict else 503,{"status":"ok" if ready else "degraded","database":"ok","worker_alive":worker_alive,"model_configured":configured,"provider_health":"not_probed"})
+            except sqlite3.Error:
+                self._send(503,{"status":"unavailable","database":"unavailable"})
+            return
         if path in {"/workspace","/workspace/","/workspace/live.js"}:
             name = "live.js" if path.endswith("/live.js") else "index.html"
             folder = ROOT / "frontend" / "shared"
@@ -2708,6 +2735,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             status,body=handle_get_conversation(_ai_service(),conversation_id,dict(user),parse_qs(urlsplit(self.path).query))
             self._send(status,body); return
         if path == "/manual-v9":
+            if not _module_enabled("transport"): self._send(404,{"error":"not_found"}); return
             user = self._user()
             if user:
                 self._manual_v9(user)
@@ -2904,8 +2932,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/tasks":
             self._create_task(user); return
         if path == "/api/ai/chat":
+            if os.environ.get("BOT_STRICT_PILOT","").lower() in {"1","true","yes"}:
+                self._send(410,{"error":"legacy_chat_disabled","message":"请使用企业工作空间。"}); return
             self._chat(user); return
         if path == "/api/agent/chat":
+            if os.environ.get("BOT_STRICT_PILOT","").lower() in {"1","true","yes"}:
+                self._send(410,{"error":"use_durable_jobs","message":"请使用企业工作空间的持久任务入口。"}); return
             try: payload=self._json_body()
             except Exception: self._send(400,{"error":"invalid_request"}); return
             status,body=_v3_chat(dict(user),payload)
@@ -3249,6 +3281,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             role=body.get("role",target["role"])
             name=str(body.get("name",target["name"])).strip()[:80]
             if role not in ROLES or not name: con.rollback(); self._send(400,{"error":"invalid_user"}); return
+            if target["role"]=="owner_finance" and target["active"] and (not active or role!="owner_finance"):
+                other=con.execute("SELECT 1 FROM users WHERE tenant_id=? AND id!=? AND role='owner_finance' AND active=1",(actor["tenant_id"],user_id)).fetchone()
+                if not other: con.rollback(); self._send(409,{"error":"last_owner_required"}); return
             con.execute("UPDATE users SET active=?,role=?,name=? WHERE id=?",(int(active),role,name,user_id))
             if not active or role!=target["role"]:
                 con.execute("DELETE FROM sessions WHERE user_id=?",(user_id,))
