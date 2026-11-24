@@ -136,6 +136,8 @@ def now_iso() -> str:
 
 
 def db() -> sqlite3.Connection:
+    if TENANT_ID == product_profile.UNCONFIGURED_ID:
+        raise RuntimeError("enterprise configuration required")
     DATA_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None, factory=ClosingConnection)
     try:
@@ -1553,7 +1555,7 @@ class V3Tools:
     recovery_safe_tools=frozenset({
         "list_waybills","get_waybill_history","get_recent_changes","get_operational_summary",
         "get_daily_routine_scan","review_business_records","list_capabilities","read_skill",
-        "find_records","recall_work_result","search_workplace_memory","search_company_knowledge","list_colleagues",
+        "find_records","list_work_tasks","recall_work_result","search_workplace_memory","search_company_knowledge","list_colleagues",
         "get_case_workspace","get_agent_usage","get_agent_health","analyze_table",
         "create_task","update_task","update_receipt_status","update_fee_status","send_message",
         "handoff_case","share_case_file","publish_company_knowledge","manage_event_alerts",
@@ -1837,9 +1839,9 @@ class V3SafeModel:
         v3_policy=("数据以服务端按当前账号授权范围返回的字段为准。查询正常且授权范围内没有记录时，可以直接回答没有；"
                    "查询失败也不等于没有业务。信息不足时先自主查找其他相关记录，确实无法确认再简短说明已知事实与不确定之处。"
                    "与普通业务人员交流，默认用日常用语，不主动使用哈希、凭证、字段名、英文状态或错误代码；材料具体类型有依据时说签收照片、发票、付款记录等，没有依据就说相关资料，不猜材料是什么。"
-                   "系统里没有回单登记，只说明系统没有记录，不能推断实物没收到或对方没交；系统里没有待办，也不能推断实际没人跟进。资料记录的标记相同不等于同一份原件存在或内容已经核实。"
+                   "系统里没有业务登记，只说明系统没有记录，不能推断现实事件没有发生；系统里没有待办，也不能推断实际没人跟进。资料标记相同不等于原件存在或内容已核实。"
                    "如果当前没有能执行某项操作的工具，只能说明目前不能直接处理，不能擅自说用户或自己没有权限；只有服务端明确返回权限不足时才说权限不足。用户主动询问专业词或技术细节时可以准确使用，并结合语境解释。"
-                   "不要把内部工具名、英文类别标识或数据库字段当作给用户看的依据；系统要求的标准方括号来源引用仍须保留，界面会把运单引用显示为可点开的依据。")
+                   "不要把内部工具名、英文类别标识或数据库字段当作给用户看的依据；系统要求的标准方括号来源引用仍须保留，按已接入的证据类型显示可追溯依据。")
         if _V3_AUDIO.get():
             v3_policy += ("本轮附有语音，文字可能来自自动转写，地名、人名、单号可能出现同音字或错字。"
                           "找不到时先结合当前有权查看的业务记录，自主核对合理的同音或近似候选；"
