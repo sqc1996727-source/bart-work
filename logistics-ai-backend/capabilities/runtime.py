@@ -305,7 +305,7 @@ def preferences(host,user):
  return {r['key']:r['value'] for r in rows}
 
 def execute(host,user,name,args,key):
- allowed={t['function']['name']:t['function']['parameters'] for t in catalog.tools()}
+ allowed={t['function']['name']:t['function']['parameters'] for t in catalog.tools(host)}
  if name not in allowed:return None
  props=allowed[name]
  if not isinstance(args,dict) or set(args)-set(props['properties']) or any(k not in args for k in props.get('required',[])):return {'error':'invalid_request'}
@@ -329,8 +329,8 @@ def execute(host,user,name,args,key):
   if old['request_hash']!=digest:return {'error':'idempotency_key_reused'}
   return json.loads(old['result'])
  try:
-  if name=='list_capabilities':result={'skills':[{'name':k,'title':v[0],'description':v[1]} for k,v in catalog.SKILLS.items()]}
-  elif name=='read_skill':result=catalog.read(args['name'])
+  if name=='list_capabilities':result={'skills':[{'name':k,'title':v[0],'description':v[1]} for k,v in catalog.skill_index(host).items()]}
+  elif name=='read_skill':result=catalog.read(args['name'],host)
   elif name=='read_files':
    ids=args['file_ids']
    if not isinstance(ids,list) or not 1<=len(ids)<=12:raise ValueError()
@@ -349,6 +349,9 @@ def execute(host,user,name,args,key):
    if sources is not None:
     for fid in args['file_ids']:
      if fid not in sources:sources.append(fid)
+  elif name=='list_work_tasks':
+   from . import work_tasks
+   result=work_tasks.list_tasks(host,user,args)
   elif name=='find_records':result=find_records(host,user,args)
   elif name=='recall_work_result':
    from . import work_history
