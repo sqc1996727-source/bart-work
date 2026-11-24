@@ -1131,7 +1131,9 @@ def _authenticated_persona(*, tenant_id, principal_id):
             bot_state_text = "\n\n你最近的任务状态（历史扫描可用 get_daily_routine_scan 按 scan_id 读取；状态可能变化）：" + json.dumps(pending, ensure_ascii=False)
     except Exception:
         pass
-    return "当前企业："+PRODUCT["name"]+"；行业："+PRODUCT["industry"]+"。\n"+core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
+    return "当前企业："+PRODUCT["name"]+"；行业："+PRODUCT["industry"]+"。\n"+core + "\n\n" + role + "\n当前本人信息："+json.dumps(info,ensure_ascii=False)+bot_state_text+"\n称呼使用已认证账号或本人明确偏好。你可以按需要使用list_capabilities/read_skill发现和阅读技能；技能是专业方法，不是固定话术。涉及用户偏好、以往经验或企业规定时，主动按需使用search_workplace_memory寻找相关信息并核实适用范围和时效；候选不是已确认的事实。业务的实际状态以业务记录为准。\n\n记忆是活的：每轮对话结束前，主动判断这轮有没有值得沉淀的东西，有就自己记下来，不等用户开口——① 用户纠正了你（叫法、事实、规则、偏好），把更正后的结论记下，下次不再犯；② 你这次干成了一件活、发现了一条新的企业规则或口径，把结论记下，下次能接上。沉淀用 save_workplace_memory（记住的用 note 动作，无需版本号；正式规则才用 save 并带 expected_version）。守住底线：不存密码/密钥/API key/私钥，不存凭证明文，不存业务账副本；涉钱的事实只记结论和口径，不记原文明细；个人隐私不共享；未经确认的信息只当线索(kind=lead)记，绝不升级成规则。没有值得记的就不记，别为记而记。\n\n"+ ("你是会主动干活的 Bot，不是问一句答一句。老板/管理层打开工作台、或问「今天该盯什么」「有什么要处理的」「最近要办什么」时，主动调用 run_daily_routine 扫一遍今天该盯的事（对账差异＋回单催办），用大白话把结果汇报出来：先一句总数，再挑最要紧的几条说清是哪票、什么问题、要谁确认。结果是候选不是结论，涉钱的差异必须有人确认，你只报不替人拍板。汇报完把「扫到哪、催到哪」用 save_workplace_memory 的 note 动作记进工作记忆，下次接得上。"
+       if product_profile.industry_pack(PRODUCT["industry"])["business_tools"] else
+       "你是会主动干活的 Bot，不是问一句答一句。本企业未启用行业业务工具包，只有通用能力（记忆、任务、文件、表格分析、定时跟进、团队协作）。老板或管理层问「今天该盯什么」时，用现有通用能力核对真实工作任务与已记规则，如实说明哪些业务数据尚未接入，不虚构行业结果。")
 
 
 class WorkbenchContext:
@@ -1651,7 +1653,23 @@ class V3Tools:
         if user["role"] == "employee":
             capabilities = [tool for tool in capabilities
                             if tool["function"]["name"] not in {"update_fee_status", "send_message"}]
-        return tools+[recent_schema,summary_schema,list_schema,review_schema,history_schema,routine_schema,scan_schema]+capabilities+agent_team.tools()
+        # 行业包隔离：未注册行业的企业不获得物流业务工具，
+        # 只保留通用内核能力（记忆/任务/文件/分析/定时/团队）。
+        pack = product_profile.industry_pack(PRODUCT["industry"])
+        if not pack["business_tools"]:
+            logistics_names = {
+                "search_waybills","get_waybill","get_waybill_business_status",
+                "update_receipt_status","generate_waybill_report","list_waybills",
+                "review_business_records","get_waybill_history","run_daily_routine",
+                "get_daily_routine_scan","get_recent_changes","get_operational_summary",
+                "update_fee_status","commit_waybill_import","preview_waybill_import",
+            }
+            tools = [t for t in tools if t.get("function",{}).get("name") not in logistics_names]
+            extra = []
+            capabilities = [t for t in capabilities if t["function"]["name"] not in logistics_names]
+        else:
+            extra = [recent_schema,summary_schema,list_schema,review_schema,history_schema,routine_schema,scan_schema]
+        return tools+extra+capabilities+agent_team.tools()
     def execute(self, name, arguments, *, tenant_id, principal_id, idempotency_key):
         user=self.base._principal(tenant_id,principal_id)
         if not user: return {"error":"forbidden"}

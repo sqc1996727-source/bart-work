@@ -10,11 +10,26 @@ from pathlib import Path
 
 LEGACY_ID = "julong-test"
 ROLES = ("employee", "dispatcher", "owner_finance")
-MODULES = {
-    "transport": {"label": "运单", "description": "运输记录与进度", "icon": "truck", "roles": ROLES, "prompt": "查看当前运输业务"},
-    "receipt": {"label": "回单", "description": "签收凭证与回单跟进", "icon": "file", "roles": ROLES, "prompt": "查看待收回单"},
-    "finance": {"label": "财务", "description": "费用核查与内部对账", "icon": "money", "roles": ("dispatcher", "owner_finance"), "prompt": "查看当前费用异常"},
+
+# 行业能力包注册表。通用内核提供：会话、长期记忆、偏好、任务、文件、
+# 表格分析、定时/跟进、团队与权限。行业包只叠加本行业的业务模块和工具。
+# 未注册的行业不虚构业务能力，仅以通用内核运行（modules 为空）。
+INDUSTRY_PACKS = {
+    "logistics": {
+        "modules": {
+            "transport": {"label": "运单", "description": "运输记录与进度", "icon": "truck", "roles": ROLES, "prompt": "查看当前运输业务"},
+            "receipt": {"label": "回单", "description": "签收凭证与回单跟进", "icon": "file", "roles": ROLES, "prompt": "查看待收回单"},
+            "finance": {"label": "财务", "description": "费用核查与内部对账", "icon": "money", "roles": ("dispatcher", "owner_finance"), "prompt": "查看当前费用异常"},
+        },
+        "business_tools": True,   # 有物流业务工具包
+    },
 }
+MODULES = INDUSTRY_PACKS["logistics"]["modules"]  # 兼容旧引用
+
+def industry_pack(industry):
+    """返回行业包；未注册行业返回空包（通用内核能力仍完整）。"""
+    return INDUSTRY_PACKS.get(industry, {"modules": {}, "business_tools": False})
+
 def load(root, environ=None):
     env = os.environ if environ is None else environ
     file = env.get("BOT_PROFILE")
@@ -28,10 +43,12 @@ def load(root, environ=None):
         raise ValueError("invalid tenant_id")
     if not isinstance(name, str) or not name.strip() or len(name) > 80:
         raise ValueError("invalid enterprise name")
-    if industry != "logistics":
-        raise ValueError("industry pack not implemented")
-    ids = raw.get("modules", list(MODULES))
-    if not isinstance(ids, list) or any(not isinstance(x, str) or x not in MODULES for x in ids) or len(ids) != len(set(ids)):
+    if not isinstance(industry, str) or not industry.strip() or len(industry) > 40:
+        raise ValueError("invalid industry")
+    pack = industry_pack(industry)
+    available = pack["modules"]
+    ids = raw.get("modules", list(available))
+    if not isinstance(ids, list) or any(not isinstance(x, str) or x not in available for x in ids) or len(ids) != len(set(ids)):
         raise ValueError("invalid module list")
     if tenant != LEGACY_ID and not env.get("DATA_DIR"):
         raise ValueError("new enterprise requires explicit DATA_DIR")
