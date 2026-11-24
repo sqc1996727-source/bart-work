@@ -854,7 +854,8 @@ class AIService:
                         messages.append({"role":"tool","tool_call_id":call_id,"content":json.dumps({"error":"tool_not_available","message":"工具未授权或未注册，不能执行；请选择当前提供的工具。"},ensure_ascii=False)})
                         continue
                     raise bind(AIServiceError("TOOL_NOT_AUTHORIZED", "模型请求了当前用户不可用的业务工具，操作已阻止。"))
-                fingerprint = _tool_args_fingerprint(name, args) if name in _WRITE_TOOL_NAMES else None
+                is_write = name in _WRITE_TOOL_NAMES or getattr(self.tool_executor, 'is_mutating_tool', lambda _name: False)(name)
+                fingerprint = _tool_args_fingerprint(name, args) if is_write else None
                 if fingerprint and fingerprint in completed_write_results:
                     _, prior_result = completed_write_results[fingerprint]
                     result = dict(prior_result)
