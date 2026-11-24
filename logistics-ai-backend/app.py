@@ -53,6 +53,10 @@ MAX_MULTIPART_BODY = 11 * 1024 * 1024
 import module_scope
 from module_scope import LOGISTICS_MODULE_TOOLS, LOGISTICS_MODULE_ROUTES, LOGISTICS_MODULE_STATE_KEYS
 
+def _strict_pilot():
+    return os.environ.get("BOT_STRICT_PILOT", "").lower() in {"1","true","yes"}
+
+
 def _enabled_modules():
     return module_scope.enabled(PRODUCT)
 
@@ -1553,7 +1557,7 @@ class V3Tools:
     def __init__(self): self.base=WorkbenchTools()
     def recovery_permitted(self, event, request):
         if not event["job_id"]:
-            return not os.environ.get("BOT_STRICT_PILOT", "").lower() in {"1","true","yes"}
+            return not _strict_pilot()
         with db() as con:
             row=con.execute("SELECT state,cancel_requested FROM agent_jobs WHERE id=? AND tenant_id=? AND owner_id=?",
                             (event["job_id"],request.tenant_id,request.principal_id)).fetchone()
@@ -2134,15 +2138,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     con.execute("SELECT count(*) FROM agent_jobs").fetchone()
                 worker=agent_runtime._WORKERS.get(str(DB_PATH))
                 worker_alive=bool(worker and worker[0].is_alive())
-                configured=all(os.environ.get(k) for k in ("JL_AI_BASE_URL","JL_AI_MODEL","JL_AI_API_KEY"))
-                strict=os.environ.get("BOT_STRICT_PILOT","").lower() in {"1","true","yes"}
-                ready=worker_alive and configured
-                self._send(200 if ready or not strict else 503,{"status":"ok" if ready else "degraded","database":"ok","worker_alive":worker_alive,"model_configured":configured,"provider_health":"not_probed"})
+                heartbeat=agent_runtime._HEARTBEATS.get(str(DB_PATH),0)
+                worker_ready=worker_alive and bool(heartbeat) and time.monotonic()-heartbeat<30
+                from ai.service import ModelConfig, AIServiceError
+                try: ModelConfig.from_env(); configured=True
+                except AIServiceError: configured=False
+                strict=_strict_pilot()
+                ready=worker_ready and configured
+                self._send(200 if ready or not strict else 503,{"status":"ok" if ready else "degraded","database":"ok","worker_alive":worker_alive,"worker_ready":worker_ready,"model_configured":configured,"provider_health":"not_probed"})
             except sqlite3.Error:
                 self._send(503,{"status":"unavailable","database":"unavailable"})
             return
-        if path in {"/workspace","/workspace/","/workspace/live.js"}:
-            name = "live.js" if path.endswith("/live.js") else "index.html"
+        if path in {"/workspace","/workspace/","/workspace/live.js","/workspace/shell.js","/workspace/workspace.css"}:
+            name = path.rsplit("/",1)[-1] if path.endswith((".js",".css")) else "index.html"
             folder = ROOT / "frontend" / "shared"
             target = folder / name
             try:
@@ -2150,10 +2158,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     raise OSError("symlinked static root")
                 resolved = target.resolve(strict=True)
                 resolved.relative_to(folder.resolve(strict=True))
-                self._send(200, resolved.read_bytes(), "text/javascript; charset=utf-8" if name.endswith(".js") else "text/html; charset=utf-8")
+                self._send(200, resolved.read_bytes(), "text/javascript; charset=utf-8" if name.endswith(".js") else "text/css; charset=utf-8" if name.endswith(".css") else "text/html; charset=utf-8")
             except (OSError, ValueError):
                 self._send(503, {"error": "frontend_not_ready"})
             return
+        if _strict_pilot() and path in {"/","/agent-v3","/agent-v3/","/agent-v4","/agent-v4/"}:
+            self._send(302,"",headers=(("Location","/workspace/"),)); return
         if path in {"/agent-v4","/agent-v4/"} or path.startswith("/agent-v4/assets/"):
             allowed={"/agent-v4/assets/window.css":("window.css","text/css; charset=utf-8"),
                      "/agent-v4/assets/app.js":("app.js","text/javascript; charset=utf-8"),
@@ -2628,11 +2638,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if path == "/api/tasks":
             self._create_task(user); return
         if path == "/api/ai/chat":
-            if os.environ.get("BOT_STRICT_PILOT","").lower() in {"1","true","yes"}:
+            if _strict_pilot():
                 self._send(410,{"error":"legacy_chat_disabled","message":"请使用企业工作空间。"}); return
             self._chat(user); return
         if path == "/api/agent/chat":
-            if os.environ.get("BOT_STRICT_PILOT","").lower() in {"1","true","yes"}:
+            if _strict_pilot():
                 self._send(410,{"error":"use_durable_jobs","message":"请使用企业工作空间的持久任务入口。"}); return
             try: payload=self._json_body()
             except Exception: self._send(400,{"error":"invalid_request"}); return
@@ -2812,7 +2822,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         with db() as con:
             snap=con.execute("SELECT rev,updated_at,payload FROM work_state WHERE id=1").fetchone()
         state=_visible_state(_decode_state(snap["payload"]),user["role"],user["id"])
-        boot={"me":user["name"],"role":user["role"],"share":"","rev":snap["rev"],"updated":snap["updated_at"],"byMe":False,"state":state}
+        boot={"me":user["name"],"role":user["role"],"share":"","rev":snap["rev"],"updated":snap["updated_at"],"byMe":False,"state":state,"modules":sorted(_enabled_modules()),"strict_pilot":_strict_pilot(),"organization":PRODUCT["name"]}
         safe=json.dumps(boot,ensure_ascii=False,separators=(",", ":"))
         safe=safe.replace("<","\\u003c").replace(">","\\u003e").replace("&","\\u0026")
         employee_guard="" if user["role"]=="owner_finance" else """
@@ -2823,7 +2833,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
 });})();</script>"""
         injection="<script>window.__JL_CLOUD="+safe+";</script><script>"+shim+"</script>"+employee_guard
         page=page.replace("</head>",injection+"</head>",1)
-        page=page.replace("前端业务工作台 · 离线原型","前端业务工作台 · 企业测试")
+        page=page.replace("前端业务工作台 · 离线原型","企业业务工作台")
+        from html import escape
+        page=page.replace('<div class="brand-name">巨龙物流</div>', '<div class="brand-name">'+escape(PRODUCT["name"])+'</div>')
+        page=page.replace('<span>巨龙物流 · 业务工作台 · 内部试运行</span>', '<span>'+escape(PRODUCT["name"])+' · 业务工作台</span>')
+        hidden=[]
+        if not _module_enabled("finance"):
+            hidden += ["#btn-ledger","#btn-month","[data-tab=fees]","[data-tab=bill]"]
+        if not _module_enabled("receipt"):
+            hidden += ["#open-envelope","[data-tab=receipt]","[data-tab=deliver]"]
+        if not _module_enabled("finance") and not _module_enabled("receipt"):
+            hidden += ["#btn-ops"]
+        if hidden:
+            page=page.replace("</head>","<style>"+",".join(hidden)+"{display:none!important}</style></head>",1)
+        if _strict_pilot():
+            page=page.replace('data-src="/agent-v3/"','data-src="/workspace/"')
+            page=page.replace('<div class="top-spacer"></div>','<div class="top-spacer"></div><a class="btn btn-sm" href="/workspace/">返回 AI 工作空间</a>',1)
+            page=page.replace("</head>", """<script>document.addEventListener('click',function(e){if(e.target.closest('#jl-brand,#jl-ai-switch,#jl-pull')){e.preventDefault();e.stopImmediatePropagation();location.href='/workspace/'}},true);</script></head>""",1)
         self._send(200,page,"text/html; charset=utf-8")
 
     def _save_state(self, user):
@@ -3035,13 +3061,16 @@ def main():
         add_user(args.username,args.name,args.role,password)
         print(f"created user {args.username} role={args.role}")
         return
+    os.environ.setdefault("BOT_STRICT_PILOT","1")
     init_db()
     agent_runtime.start(sys.modules[__name__])
     class Server(http.server.ThreadingHTTPServer):
         daemon_threads = True
         allow_reuse_address = True
     print(f"Julong test backend listening on {HOST}:{PORT}; database={DB_PATH}",flush=True)
-    Server((HOST,PORT),Handler).serve_forever()
+    with Server((HOST,PORT),Handler) as server:
+        try: server.serve_forever()
+        finally: agent_runtime.stop(sys.modules[__name__])
 
 
 if __name__ == "__main__":
