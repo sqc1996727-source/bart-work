@@ -31,7 +31,7 @@ function empty(t){return '<div class="live-empty">'+esc(t)+'</div>'}
 function loginHTML(){return '<div class="empty appear">'+ic('spark')+'<h2>进入企业工作空间</h2><p>使用企业账号登录</p></div><form class="liveform" onsubmit="login(event)"><label>账号<input name="username" required autocomplete="username"></label><label>密码<input name="password" type="password" required autocomplete="current-password"></label><button class="primary" type="submit">登录</button></form>'}
 async function login(e){e.preventDefault();const f=e.target,b=f.querySelector('button');b.disabled=true;try{const data=new FormData(f);await api('/api/login',{username:data.get('username'),password:data.get('password')});f.reset();await boot()}catch(err){fail(err)}finally{b.disabled=false}}
 async function logout(){try{await api('/api/logout',{});resetSession();live.error='';render()}catch(e){fail(e)}}
-async function boot(){live.loading=true;live.error='';render();try{live.boot=await api('/api/agent/ui/bootstrap');modules.splice(0,modules.length,...arr(live.boot.modules).filter(m=>typeof m.id==='string'&&/^[a-z0-9-]+$/.test(m.id)).map(m=>[m.id,Object.hasOwn(icons,m.icon)?m.icon:'file',m.label,m.description,m.prompt]));await refresh('home');await refresh('tasks');const running=live.jobs.find(j=>activeStates.has(j.state));if(running){live.selected=running;watch(running.id)}}catch(e){if(e.status===401){resetSession()}else{live.error=e.message}}finally{live.loading=false;render()}}
+async function boot(){live.loading=true;live.error='';render();try{live.boot=await api('/api/agent/ui/bootstrap');modules.splice(0,modules.length,...arr(live.boot.modules).filter(m=>typeof m.id==='string'&&/^[a-z0-9-]+$/.test(m.id)).map(m=>[m.id,Object.hasOwn(icons,m.icon)?m.icon:'file',m.label,m.description,m.prompt]));await refresh('home');await refresh('tasks');const running=live.jobs.find(j=>activeStates.has(j.state));if(running){await selectJob(running.id)}}catch(e){if(e.status===401){resetSession()}else{live.error=e.message}}finally{live.loading=false;render()}}
 async function refresh(v){const epoch=live.epoch;let result;
  if(v==='home'){result=await api('/api/agent/today');if(epoch===live.epoch)live.today=result}
  if(v==='tasks'){const [a,b]=await Promise.all([api('/api/agent/jobs'),api('/api/agent/followups')]);if(epoch===live.epoch){live.jobs=arr(a.items);live.followups=arr(b.items)}}
@@ -88,10 +88,10 @@ function render(){
  $('content').innerHTML=(live.error?'<p class="live-error" role="alert">'+esc(live.error)+'</p>':'')+(live.pending&&!live.posting?'<button class="secondary" onclick="retryPending()">重试上一条提交</button>':'')+(!live.boot?(live.loading?empty('正在连接企业服务…'):loginHTML()):view==='home'?home():view==='business'?businessHTML():view==='new'?title('今天，需要我做什么？','直接交代工作，或添加相关资料。')+scopeControls():view==='job'?jobHTML():listHTML());
  $('suggestions').innerHTML=live.boot&&(view==='home'||view==='new')?'<button onclick="go(\'new\')">'+ic('plus')+'新建工作</button>':'';
  $('prompt').disabled=!live.boot||live.posting;$('sendBtn').disabled=!live.boot||live.posting||live.uploading;$('attachBtn').disabled=!live.boot||live.uploading;$('newBtn').disabled=!live.boot;$('historyBtn').disabled=!live.boot;$('menuBtn').disabled=!live.boot;
- $('fine').textContent=live.boot?(live.uploading?'正在上传资料…':live.attachmentIds.length?'已上传 '+live.attachmentIds.length+' 份资料，发送后交由 AI 处理':'企业授权范围内执行'):'请先登录企业账号';
+ $('fine').textContent=live.boot?(live.uploading?'正在上传资料…':live.attachmentIds.length?'已上传 '+live.attachmentIds.length+' 份资料，发送后交由 AI 处理':(live.scope==='personal'?'个人工作范围':'企业工作范围')+' · 按账号权限执行'):'请先登录企业账号';
  updateStatus();
 }
-async function launch(t){if(!live.boot||live.posting)return;closeSheet();let p=live.pending;if(p&&(p.body.text!==t||p.body.conversation_id!==(live.conversation||undefined))){live.error='上一条提交结果尚未确认，请先重试原任务，避免重复操作。';render();return}
+async function launch(t){if(!live.boot||live.posting||live.uploading)return;if(activeStates.has(live.selected?.state)&&live.conversation){live.error='这项工作仍在执行，请等待结果或新建独立工作。';render();return}closeSheet();let p=live.pending;if(p&&(p.body.text!==t||p.body.conversation_id!==(live.conversation||undefined))){live.error='上一条提交结果尚未确认，请先重试原任务，避免重复操作。';render();return}
  if(!p){const body={text:t,memory_scope:live.scope,attachment_ids:[...live.attachmentIds]};if(live.conversation)body.conversation_id=live.conversation;p=live.pending={body,key:key()}}
  const epoch=live.epoch;live.posting=true;live.error='';render();try{let d=await api('/api/agent/jobs',p.body,{'Idempotency-Key':p.key});if(epoch!==live.epoch)return;live.pending=null;live.attachmentIds=[];live.conversation=d.conversation_id;live.messages.push({role:'user',text:t});$('prompt').value='';view='job';live.selected={id:d.job_id,state:'queued',progress:'等待服务接收'};watch(d.job_id);render()}catch(e){if(epoch===live.epoch){if(e.status&&e.status<500)live.pending=null;fail(e)}}finally{if(epoch===live.epoch){live.posting=false;render()}}}
 function retryPending(){if(live.pending){live.scope=live.pending.body.memory_scope;live.conversation=live.pending.body.conversation_id||null;launch(live.pending.body.text)}}
@@ -108,7 +108,7 @@ function watch(id){
   const sig=JSON.stringify(j);if(sig===last)return;last=sig;
   live.jobs=[j,...live.jobs.filter(x=>x.id!==id)];
   if(live.selected?.id===id){live.selected=j;if(view==='job')render();else updateStatus()}
-  if(!activeStates.has(j.state)){stopWatch();if(j.state==='succeeded')notify('本次 Agent 执行已结束，请查看实际结果');}
+  if(!activeStates.has(j.state)){if(j.state==='succeeded'&&live.selected?.id===id&&j.result?.message&&!live.messages.some(m=>m.id===j.result.message.id))live.messages.push(j.result.message);stopWatch();if(view==='job')render();if(j.state==='succeeded')notify('本次 Agent 执行已结束，请查看实际结果');}
  }
  async function check(){
   if(!valid()||busy||streamHealthy)return;
