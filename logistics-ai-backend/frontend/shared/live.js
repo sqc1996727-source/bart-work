@@ -14,9 +14,9 @@ async function api(path,body,headers={},method='POST'){
  if(body!==undefined){opt.method=method;if(body instanceof FormData)opt.body=body;else{opt.headers['Content-Type']='application/json';opt.body=JSON.stringify(body)}}
  let r;try{r=await fetch(path,opt)}catch(e){throw Error('网络连接失败，请检查连接后重试')}
  let d;try{d=await r.json()}catch(e){throw Error('服务返回异常')}
- if(!r.ok){let e=Error(d.message||d.error?.message||(typeof d.error==='string'?d.error:null)||('请求未完成（'+r.status+'）'));e.status=r.status;throw e}return d;
+ if(!r.ok){let e=Error(d.message||d.error?.message||(typeof d.error==='string'?d.error:null)||('请求未完成（'+r.status+'）'));e.status=r.status;e.code=typeof d.error==='string'?d.error:d.error?.code;throw e}return d;
 }
-function fail(e){live.error=e.message||'操作未完成';if(e.status===401){resetSession();live.error='登录已过期，请重新登录'}render()}
+function fail(e){live.error=e.message||'操作未完成';if(e.code==='invalid_credentials'){live.error='账号或密码错误，请重新输入'}else if(e.code==='login_rate_limited'){live.error='登录尝试过于频繁，请稍后再试'}else if(e.status===401){resetSession();live.error='登录已过期，请重新登录'}render()}
 function stopWatch(){live.watchEpoch++;if(live.watch)live.watch.close();clearInterval(live.poll);live.watch=null;live.poll=null}
 function resetSession(){stopWatch();live.epoch++;Object.assign(live,{boot:null,today:null,jobs:[],followups:[],history:[],notifications:[],conversation:null,messages:[],selected:null,detail:null,attachmentIds:[],pending:null,posting:false,uploading:false,loading:false,scope:'enterprise',financeItems:[],financeReview:null,users:[],editingUser:null});modules.splice(0);view='home';closeSheet();$('prompt').value='';$('file').value=''}
 function organization(){return live.boot?.organization?.name||'企业工作空间'}
