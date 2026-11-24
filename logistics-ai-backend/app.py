@@ -1564,6 +1564,9 @@ class V3Tools:
         "commit_waybill_import","schedule_followup"
     })
     def __init__(self): self.base=WorkbenchTools()
+    def is_mutating_tool(self, name):
+        return industry_extension.mutating_tool(PRODUCT, name)
+
     def recovery_permitted(self, event, request):
         if not event["job_id"]:
             return not _strict_pilot()
