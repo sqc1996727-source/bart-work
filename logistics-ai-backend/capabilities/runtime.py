@@ -72,7 +72,8 @@ def job_view(host,user,jid):
 def submit(host,user,payload,key):
  if not key or len(key)>128 or key.startswith('scheduled:'):raise ValueError('request_key_required')
  if not isinstance(payload,dict) or set(payload)-{'conversation_id','text','memory_scope','attachment_ids'}:raise ValueError('invalid_request')
- if not isinstance(payload.get('text'),str) or len(payload['text'])>8000:raise ValueError('invalid_message')
+ if not isinstance(payload.get('text'),str) or not payload['text'].strip() or len(payload['text'])>8000:raise ValueError('invalid_message')
+ if payload.get('memory_scope','enterprise') not in {'enterprise','personal'}:raise ValueError('invalid_memory_scope')
  ids=payload.get('attachment_ids',[])
  if not isinstance(ids,list) or len(ids)>12:raise ValueError('invalid_attachments')
  for fid in ids:files.authorized(host,user,fid)
@@ -88,6 +89,7 @@ def submit(host,user,payload,key):
   if con.execute("SELECT count(*) FROM agent_jobs WHERE tenant_id=? AND owner_id=? AND state IN ('queued','running')",(user['tenant_id'],user['id'])).fetchone()[0]>=20:raise ValueError('too_many_pending_jobs')
  cid=payload.get('conversation_id')
  if cid:
+  if not isinstance(cid,str) or not cid.startswith(host._V3_CONVERSATION_PREFIX):raise LookupError('not_found')
   record=host._v3_ai_service().store.get_conversation(tenant_id=user['tenant_id'],principal_id=user['id'],conversation_id=cid,limit=1)
   if not record or not host.integrity.conversation_allowed(host,user,cid):raise LookupError('not_found')
   if payload.get('memory_scope', 'enterprise') != record['memory_scope']:raise ValueError('conversation_scope_mismatch')
