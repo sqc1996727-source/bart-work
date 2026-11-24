@@ -32,4 +32,8 @@
 
 ## 当前证据边界
 
-GitHub 已提交源码；已静态检查共享 JS 和旧工作台脚本。当前编辑环境无法克隆仓库运行完整 Python/浏览器/真实模型验收；依赖安装、生产运行、凭据轮换、反代和数据迁移仍待独立实测。不得把本次代码提交当作已通过生产验收。
+GitHub 已提交源码。共享前端 JavaScript 静态解析检查通过。
+
+本次独立执行的局部验证：从 GitHub 读取并在临时环境复制四个文件，用 git hash-object 确认字节与远程 Git blob 完全一致（module_scope.py 8cae139b3b2f37b464985f5c0af5a46f284a4cf7；product_profile.py 2239e15aa9b508ce137717467c2200abdeb00b01；scripts/pilot_cutover.py d44f914372bbfe4ebfe97e8e9063b35e4e5b6d48；scripts/ledger_backup.py dabb843bf9d386130cdef3c98c55b60bab7d6464）。四个文件编译通过。8 种模块组合的策略函数验证通过；真实临时 SQLite 两库和关联文件备份/恢复通过；同 ID 内容变化、文件篡改和缺失均被发现。测试使用合成数据。
+
+当前编辑环境 GitHub DNS 不通，完整仓库无法克隆，尚未执行全量 Python/HTTP/浏览器/真实模型验收、完整依赖安装。生产运行、凭据轮换、反代和真实数据迁移仍待独立实测。不得把局部测试或源码提交当作已通过生产验收。
