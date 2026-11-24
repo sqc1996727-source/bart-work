@@ -75,3 +75,12 @@ def route(profile, host, user, method, path, query, body, key):
     if not isinstance(status, int) or not isinstance(result, Mapping):
         raise TypeError("adapter route must return status and structured result")
     return status, dict(result)
+
+
+def mutating_tool(profile, name):
+    """Conservative default: adapter tools are writes unless explicitly read-only."""
+    pack = get_pack(profile["industry"])
+    for entries in pack.get("adapter_tools", {}).values():
+        if name in entries:
+            return entries[name].get("read_only") is not True
+    return False
