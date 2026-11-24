@@ -19,7 +19,9 @@ class ProductProfileTests(unittest.TestCase):
     def test_legacy_defaults(self):
         a=p.load(self.root,{})
         self.assertEqual(a["tenant_id"],p.LEGACY_ID)
-        self.assertEqual(a["data_dir"],self.root/"data")
+        # macOS /tmp 是指向 /private/tmp 的软链；load() 按设计 resolve，
+        # 断言也要 resolve，否则是环境差异不是产品缺陷。
+        self.assertEqual(a["data_dir"],(self.root/"data").resolve())
     def test_role_filtered_modules_and_enterprise_name(self):
         a=self.profile()
         self.assertEqual(p.public_profile(a,"owner_finance")["organization"]["name"],"示例企业 A")

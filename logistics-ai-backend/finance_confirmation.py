@@ -1,5 +1,17 @@
 """Human-reviewed fee transitions, backed by transactional immutable candidates."""
-import hashlib, hmac, json, secrets
+import hashlib, hmac, json, os, secrets
+
+# 费用类型白名单：必须与 capabilities/routine.py 的实际比对类型一致。
+# routine 按「运费」「进仓费」比对厂家账，若人审闸门不收「运费」，
+# 差异会永远卡在待确认、无法留痕关闭。可由部署端 BOT_FEE_TYPES 覆盖，
+# 避免再按企业写死。仅授权岗位可进入本模块，加入运费不会让员工看到金额。
+def _fee_types():
+    raw = os.environ.get("BOT_FEE_TYPES", "")
+    if raw:
+        types = frozenset(x.strip() for x in raw.split(",") if x.strip())
+        if types:
+            return types
+    return frozenset({"运费", "进仓费", "送货费", "等时费", "其他"})
 
 
 def _json(value):
@@ -32,7 +44,7 @@ def create(host, user, args, key):
         if fee.get('status')=='作废': raise ValueError('invalid_fee_status')
         if fee.get('status')=='已确认' and args['status']!='作废': raise ValueError('confirmed_fee_requires_reversal')
         if args['status']=='作废' and fee.get('status')!='已确认': raise ValueError('invalid_fee_status')
-        if fee.get('type') not in {'进仓费','送货费','等时费','其他'}: raise ValueError('invalid_fee_type')
+        if fee.get('type') not in _fee_types(): raise ValueError('invalid_fee_type')
         number=str(fee.get('number','')).strip()
         docs=json.loads(state[host.STATE_KEYS[0]])
         if not number or sum(isinstance(d,dict) and str(d.get('number','')).strip()==number for d in docs)!=1: raise ValueError('invalid_fee_waybill')
@@ -155,7 +167,7 @@ def create_difference(host,user,args,key):
         state=host._decode_state(row['payload']); diffs=json.loads(state[host.STATE_KEYS[7]])
         docs=json.loads(state[host.STATE_KEYS[0]])
         if sum(isinstance(d,dict) and str(d.get('number',''))==args['number'] for d in docs)!=1: raise ValueError('invalid_difference_waybill')
-        if args['type'] not in {'进仓费','送货费','等时费','其他'}: raise ValueError('invalid_difference_type')
+        if args['type'] not in _fee_types(): raise ValueError('invalid_difference_type')
         fees=json.loads(state[host.STATE_KEYS[4]]); bills=json.loads(state[host.STATE_KEYS[6]])
         if not any(isinstance(f,dict) and str(f.get('number',''))==args['number'] and str(f.get('type',''))==args['type'] for f in fees) and not any(isinstance(b,dict) and any(isinstance(r,dict) and str(r.get('number',''))==args['number'] and str(r.get('type',''))==args['type'] for r in b.get('rows',[])) for b in bills): raise ValueError('difference_evidence_missing')
         matches=[d for d in diffs if isinstance(d,dict) and str(d.get('id',''))==args['difference_id']]
