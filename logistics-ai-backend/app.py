@@ -9,6 +9,7 @@ import argparse
 import business_integrity as integrity
 import receipt_state
 from capabilities import logistics_read
+from industry_packs import extension as industry_extension
 from capabilities import runtime as agent_runtime, files as agent_files, catalog as capability_catalog, team as agent_team, routine as agent_routine
 import base64
 from collections import Counter
@@ -1593,8 +1594,16 @@ class V3Tools:
         blocked = _blocked_tool_names()
         def _keep(tool):
             return tool.get("function",{}).get("name") not in blocked
-        return ([t for t in tools if _keep(t)] + [t for t in extra if _keep(t)]
-                + [t for t in capabilities if _keep(t)] + [t for t in team_tools if _keep(t)])
+        shared = ([t for t in tools if _keep(t)] + [t for t in extra if _keep(t)]
+                  + [t for t in capabilities if _keep(t)] + [t for t in team_tools if _keep(t)])
+        extensions = industry_extension.list_tools(PRODUCT, dict(user))
+        names = {t["function"]["name"] for t in shared}
+        for tool in extensions:
+            name = tool["function"]["name"]
+            if name in names:
+                raise ValueError("industry tool collides with shared tool")
+            names.add(name)
+        return shared + extensions
     def execute(self, name, arguments, *, tenant_id, principal_id, idempotency_key):
         user=self.base._principal(tenant_id,principal_id)
         if not user: return {"error":"forbidden"}
@@ -1604,6 +1613,10 @@ class V3Tools:
         if _finance_scope(user)=="none" and _v3_output_has_explicit_price(json.dumps(arguments,ensure_ascii=False)):
             return {"error":"v3_financial_content_not_allowed"}
         user=dict(user)
+        handled, result = industry_extension.execute(PRODUCT, sys.modules[__name__], user,
+                                                     name, arguments, idempotency_key)
+        if handled:
+            return result
         if name=="update_fee_status":
             try: return update_fee_status_record(user,arguments,idempotency_key)
             except PermissionError: return {"error":"forbidden"}
