@@ -1063,7 +1063,8 @@ function xmlEscape(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&
    标题合并居中 11pt / 司机与电话写在右侧空白区 / 全表 1pt 实线框 */
 const FCL_COLS=[['运单号','number'],['开单日期','date'],['发站','origin'],['到站','destination'],['收货人','receiver'],['品名','cargo'],['件数','qty'],['重量','weight'],['回付方式','payMode'],['付货方式','deliveryMode'],['收货电话','phone'],['备注','remark'],['收货地址','address']];
 const FCL_WIDTHS=[12.63,9.8,8.13,9,9.88,8.13,11,10.5,8.38,11.75,18,15.13,51.25];
-const FCL_TITLE='鞍山巨龙物流发货清单';
+const FCL_ORG=(window.__JL_CLOUD||{}).organization||'巨龙物流';
+const FCL_TITLE=(FCL_ORG==='巨龙物流'?'鞍山巨龙物流':FCL_ORG)+'发货清单';
 const FCL_ORIGIN='鞍山';
 const FCL_NOTE='回付        元';
 function fclDay(iso){const m=/^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(iso||''));return m?`${Number(m[2])}.${m[3]}`:String(iso||'')}
@@ -1162,7 +1163,7 @@ function downloadBlob(blob,name){const u=URL.createObjectURL(blob),a=document.cr
 function cleanName(v){return String(v).replace(/[\\/:*?"<>|]/g,'_')}
 function docFilename(g){return fclName(g)}
 function downloadWord(g){const zip=makeFclXlsx(g);downloadBlob(new Blob([zip],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),fclName(g));notify(`已下载 ${g.partner} 车 ${g.docs.length} 票发车清单`)}
-async function downloadAllWord(){const groups=dispatchGroups();if(!groups.length)return notify('尚无分组');const items=[];for(const g of groups){const zip=makeFclXlsx(g);items.push([fclName(g),new Uint8Array(await zip.arrayBuffer())])}downloadBlob(makeZip(items),'巨龙物流_发车清单_全部车辆.zip');notify(`已下载 ${groups.length} 辆车的发车清单`)}
+async function downloadAllWord(){const groups=dispatchGroups();if(!groups.length)return notify('尚无分组');const items=[];for(const g of groups){const zip=makeFclXlsx(g);items.push([fclName(g),new Uint8Array(await zip.arrayBuffer())])}downloadBlob(makeZip(items),FCL_ORG.replace(/[\\/]/g,'_')+'_发车清单_全部车辆.zip');notify(`已下载 ${groups.length} 辆车的发车清单`)}
 
 
 // 回执信封：可由员工在“今日记录”直接批量选择，免重复填写运单信息。
@@ -1771,9 +1772,11 @@ function renderDetail(num,body){
 
 /* ---------- 业务台账浮层 ---------- */
 let tab='fees',lastBill=[],lastFeeNum='';
-function openOps(which){tab=((window.__JL_CLOUD||{}).role==='employee')?'receipt':(which||'fees');$('ops-overlay').hidden=false;document.body.style.overflow='hidden';renderOps()}
+function enabledOpsTabs(){const b=window.__JL_CLOUD||{},mods=Array.isArray(b.modules)?b.modules:['transport','receipt','finance'];return [...(mods.includes('finance')&&b.role!=='employee'?['fees','bill']:[]),...(mods.includes('receipt')?['receipt','deliver']:[])]}
+function openOps(which){const allowed=enabledOpsTabs();if(!allowed.length)return;tab=allowed.includes(which)?which:allowed[0];$('ops-overlay').hidden=false;document.body.style.overflow='hidden';renderOps()}
 function closeOps(){$('ops-overlay').hidden=true;if(!document.querySelector('.overlay:not([hidden])'))document.body.style.overflow=''}
 function renderOps(){
+  const allowed=enabledOpsTabs();if(!allowed.length){$('ops-overlay').hidden=true;return}if(!allowed.includes(tab))tab=allowed[0];
  const employee=(window.__JL_CLOUD||{}).role==='employee';
  document.querySelectorAll('#ops-tabs button').forEach(b=>{if(['fees','bill'].includes(b.dataset.tab))b.hidden=employee});
  document.querySelectorAll('#ops-tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
