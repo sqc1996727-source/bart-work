@@ -1656,6 +1656,9 @@ class V3Tools:
         # 行业包隔离：未注册行业的企业不获得物流业务工具，
         # 只保留通用内核能力（记忆/任务/文件/分析/定时/团队）。
         pack = product_profile.industry_pack(PRODUCT["industry"])
+        # 团队/协作工具里也混着物流专属工具（案卷交接、运单关联、运单导入），
+        # 非物流企业必须一并过滤，不能因为来自 team 模块就漏掉。
+        team_tools = agent_team.tools()
         if not pack["business_tools"]:
             logistics_names = {
                 "search_waybills","get_waybill","get_waybill_business_status",
@@ -1663,13 +1666,15 @@ class V3Tools:
                 "review_business_records","get_waybill_history","run_daily_routine",
                 "get_daily_routine_scan","get_recent_changes","get_operational_summary",
                 "update_fee_status","commit_waybill_import","preview_waybill_import",
+                "get_case_workspace","handoff_case","share_case_file",
             }
             tools = [t for t in tools if t.get("function",{}).get("name") not in logistics_names]
             extra = []
             capabilities = [t for t in capabilities if t["function"]["name"] not in logistics_names]
+            team_tools = [t for t in team_tools if t.get("function",{}).get("name") not in logistics_names]
         else:
             extra = [recent_schema,summary_schema,list_schema,review_schema,history_schema,routine_schema,scan_schema]
-        return tools+extra+capabilities+agent_team.tools()
+        return tools+extra+capabilities+team_tools
     def execute(self, name, arguments, *, tenant_id, principal_id, idempotency_key):
         user=self.base._principal(tenant_id,principal_id)
         if not user: return {"error":"forbidden"}
@@ -2370,8 +2375,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         secure = "; Secure" if COOKIE_SECURE else ""
         return f"{SESSION_COOKIE}={token}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}"
 
+    @staticmethod
+    def _industry_route_denied(path):
+        """行业包未启用物流时，物流业务接口一律不可达（不泄露接口存在）。"""
+        if product_profile.industry_pack(PRODUCT["industry"])["business_tools"]:
+            return False
+        logistics_prefixes = (
+            "/api/finance/candidates", "/api/reconciliation/", "/api/waybills/",
+            "/api/agent/cases/", "/api/agent/routine-scans/",
+        )
+        return path.startswith(logistics_prefixes)
+
     def do_GET(self):
         path = urlsplit(self.path).path
+        if self._industry_route_denied(path): self._send(404,{"error":"not_found"}); return
         if path == "/api/finance/candidates" or path.startswith('/api/finance/candidates/'):
             user=self._require_user()
             if not user: return
@@ -2772,6 +2789,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if self._industry_route_denied(path): self._send(404,{"error":"not_found"}); return
         if path == "/api/login":
             self._login(); return
         if path == "/api/logout":
@@ -2915,6 +2933,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._send(404, {"error": "not_found"})
 
     def do_PUT(self):
+        if self._industry_route_denied(urlsplit(self.path).path): self._send(404,{"error":"not_found"}); return
         user = self._require_user()
         if not user: return
         if urlsplit(self.path).path == "/api/state":

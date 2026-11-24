@@ -30,10 +30,33 @@ def save(host,user,args,conversation_id):
  if end and date.fromisoformat(end)<date.fromisoformat(start):raise ValueError()
  action=args.get('action')
  if action is not None and action not in {'save','note','forget'}:raise ValueError()
+ # forget 独立处理：撤回不需要 expected_version 匹配当前版本，
+ # 也不应被 save/rule 的契约约束误伤。个人偏好本人可撤回，
+ # 企业记忆仅授权岗位可撤回，全部留痕。
+ if action=='forget':
+  scope=args['scope'];topic=str(args.get('topic','')).strip()[:100]
+  if scope not in ('personal','company') or not topic:raise ValueError('forget_requires_scope_topic')
+  if scope=='company' and user['role'] not in {'owner_finance','dispatcher'}:raise PermissionError()
+  owner=user['id'] if scope=='personal' else ''
+  with host.db() as con:
+   con.execute('BEGIN IMMEDIATE')
+   actor=con.execute('SELECT role FROM users WHERE id=? AND tenant_id=? AND active=1',(user['id'],user['tenant_id'])).fetchone()
+   if not actor or actor['role']!=user['role']:raise PermissionError()
+   if scope=='company' and user['role']=='dispatcher':
+    owned=con.execute('SELECT 1 FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=? AND created_by=? AND active=1',(user['tenant_id'],owner,scope,topic,user['id'])).fetchone()
+    if not owned:raise PermissionError()
+   cur=con.execute('SELECT active FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=? ORDER BY version DESC LIMIT 1',(user['tenant_id'],owner,scope,topic)).fetchone()
+   if cur and cur['active']:
+    con.execute('UPDATE workplace_memory SET active=0 WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=?',(user['tenant_id'],owner,scope,topic))
+    host.audit(con,user,'memory.forget','workplace_memory',topic,{'scope':scope})
+   con.commit()
+  return {'forgotten':True,'topic':topic}
  # 契约层防御：Agent 常把"主动沉淀"调成 save 却漏 expected_version。
- # 规则：显式 action 优先；缺省时，凡非 rule 类型或缺 expected_version 的，
- # 一律按 note 处理（note 无需版本、走同一套权限/隔离/SECRET/留痕）。
- # 只有显式 action=save 且 kind=rule 且带合法 expected_version 才是正式规则。
+ # 实际行为（与 catalog schema 一致）：
+ #  - action=note：仅限 preference/experience/lead，无需版本，走同一套权限/隔离/SECRET/留痕；
+ #  - action=save：仅限 kind=rule 且带合法 expected_version，按版本并发控制写入正式规则；
+ #  - 缺省 action：kind=rule 且带合法版本才按 save，否则按 note；
+ #  - action=forget：上面已独立处理，不经过本节版本校验。
  expected=args.get('expected_version')
  if action is None:
   action='save' if (kind=='rule' and type(expected) is int and expected>=0) else 'note'
@@ -76,11 +99,6 @@ def save(host,user,args,conversation_id):
   else:
    row=con.execute('SELECT coalesce(max(version),0) FROM workplace_memory WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=?',(user['tenant_id'],owner,scope,topic)).fetchone()
    if row[0]!=expected:raise ValueError('version_conflict')
-  if args.get('action','save')=='forget':
-   if not expected:raise ValueError()
-   con.execute('UPDATE workplace_memory SET active=0 WHERE tenant_id=? AND owner_id=? AND scope=? AND topic=?',(user['tenant_id'],owner,scope,topic))
-   host.audit(con,user,'memory.forget','workplace_memory',topic,{'scope':scope})
-   con.commit();return {'forgotten':True,'topic':topic}
   mid=secrets.token_urlsafe(16)
   con.execute('INSERT INTO workplace_memory(id,tenant_id,owner_id,scope,topic,version,kind,title,content,applies_to,valid_from,valid_until,role_rank,source_conversation,created_at,active,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',(mid,user['tenant_id'],owner,scope,topic,expected+1,kind,title,content,applies,start,end or None,rank,conversation_id,host.now_iso(),1,user['id']))
   host.audit(con,user,'memory.save','workplace_memory',mid,{'scope':scope,'kind':kind,'version':expected+1})
