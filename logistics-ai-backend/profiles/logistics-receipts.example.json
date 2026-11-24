@@ -1,0 +1,9 @@
+{
+  "tenant_id": "customer-beta",
+  "name": "示例企业 B",
+  "industry": "logistics",
+  "modules": [
+    "transport",
+    "receipt"
+  ]
+}
