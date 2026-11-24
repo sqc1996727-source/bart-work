@@ -37,3 +37,18 @@ GitHub 已提交源码。共享前端 JavaScript 静态解析检查通过。
 本次独立执行的局部验证：从 GitHub 读取并在临时环境复制四个文件，用 git hash-object 确认字节与远程 Git blob 完全一致（module_scope.py 8cae139b3b2f37b464985f5c0af5a46f284a4cf7；product_profile.py 2239e15aa9b508ce137717467c2200abdeb00b01；scripts/pilot_cutover.py d44f914372bbfe4ebfe97e8e9063b35e4e5b6d48；scripts/ledger_backup.py dabb843bf9d386130cdef3c98c55b60bab7d6464）。四个文件编译通过。8 种模块组合的策略函数验证通过；真实临时 SQLite 两库和关联文件备份/恢复通过；同 ID 内容变化、文件篡改和缺失均被发现。测试使用合成数据。
 
 当前编辑环境 GitHub DNS 不通，完整仓库无法克隆，尚未执行全量 Python/HTTP/浏览器/真实模型验收、完整依赖安装。生产运行、凭据轮换、反代和真实数据迁移仍待独立实测。不得把局部测试或源码提交当作已通过生产验收。
+
+
+## 独立验收后的定向修复（基线 eaa8c8a）
+
+WorkBuddy 报告该基线 157 项测试通过，9 组运行验收通过，但已确认费用非法状态变更被模型重复请求时出现 502；登录错误提示也不准确。该报告属于前一提交的实际验收，并非本次修复后的全量验收。
+
+本次修改：
+- finance_confirmation.candidate_rejection 对允许公开的业务校验码返回明确解释；V3Tools 不再将全部费用候选校验错误压成 invalid_request。不改变候选、财务审核、确认、作废等业务规则。
+- AIService 仅对持久化的结构化拒绝结果（有 result_json 且 error 与持久错误码吻合）返回缓存结果；不再次执行。异常、取消、结果不确定仍失败关闭。fail_tool 清除结果字段以区别确定的业务拒绝。
+- 登录区分 invalid_credentials、login_rate_limited 与会话认证失效。
+- test_stable_pilot.py 新增四项针对性 Python 回归测试：真实合成账本中的拒绝与重复请求、合法候选去重、未知执行故障禁止恢复、异常信息脱敏。
+
+当前环境直接执行远程 JS 的 api/fail 函数，使用合成 HTTP 响应验证四种情况通过：错误密码 401、认证失效 401、频率限制 429、其他权限拒绝 403。JS 语法检查通过。完整仓库克隆仍受 DNS 限制，本次新增 Python 测试及真实模型复现未运行。
+
+定向复验：以当前最新提交建立隔离环境，不使用真实账本。运行 `BOT_STRICT_PILOT=0 python3 -m unittest -v test_stable_pilot`，再运行 `BOT_STRICT_PILOT=0 python3 -m unittest discover -s . -p 'test_*.py'`。严格模式使用已授权真实模型重跑 F-2001 场景：返回正常业务拒绝答复，不生成候选、不改账本、原样重复不执行、不产生 502；合法费用候选审阅确认仍正常，取消与异常恢复约束仍有效。浏览器实测错误密码与会话失效文案。报告实际结果，不自行修改源码、不切生产；原未验证的生产 HTTPS、密码轮换、真实账本迁移等事项继续保留为上线条件。
