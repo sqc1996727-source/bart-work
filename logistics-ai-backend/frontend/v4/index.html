@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工作空间 · 巨龙物流</title>
+<link rel="stylesheet" href="assets/window.css">
+</head>
+<body>
+<div class="desktop"><div class="window" id="win">
+<aside class="left" id="left"></aside>
+<main class="center"><div class="top"><div><h1 id="title">工作空间</h1><small id="orgname">巨龙物流</small></div><div class="grow"></div><div class="mobile"><button onclick="pane('left')">工作记录</button><button onclick="pane('right')">上下文</button></div><button onclick="go('new')" aria-label="新建工作">＋</button></div>
+<div class="canvas"><div class="agent"><span class="light"></span><span id="agent-label">企业智能体</span></div><div id="scene"></div><div class="bottom"><div class="chips" id="chips"></div><form class="composer" onsubmit="ask(event)"><button class="add" type="button" onclick="document.getElementById('attach').click()" aria-label="添加附件">＋</button><input type="file" id="attach" hidden onchange="document.getElementById('prompt').placeholder=this.files[0]?'已选择：'+this.files[0].name:'交代一项工作…'"><input id="prompt" placeholder="交代一项工作…" aria-label="工作指令"><button class="send" aria-label="发送">↑</button></form></div></div></main>
+<aside class="right" id="right"></aside>
+</div><div class="caption" id="caption">巨龙物流 · 内部工作台</div></div>
+<div class="auth-shade" id="auth-shade" aria-hidden="true"><form class="auth-panel" id="login-form" autocomplete="on"><div class="auth-label">巨龙物流 · 内部工作台</div><h2>登录</h2><p class="auth-sub">使用企业账号登录。数据范围由服务端权限决定。</p><div class="auth-error" id="login-error" role="alert" hidden></div><label for="login-username">账号</label><input id="login-username" name="username" autocomplete="username" required><label for="login-password">密码</label><input id="login-password" name="password" type="password" autocomplete="current-password" required><button type="submit" class="primary" id="login-submit">登录</button></form></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="assets/adapter.js"></script>
+<script src="assets/app.js"></script>
+</body></html>
