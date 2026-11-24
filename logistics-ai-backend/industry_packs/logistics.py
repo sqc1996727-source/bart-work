@@ -5,9 +5,9 @@ ROLES = ("employee", "dispatcher", "owner_finance")
 
 PACK = {
         "modules": {
-            "transport": {"label": "运单", "description": "运输记录与进度", "icon": "truck", "roles": ROLES, "prompt": "查看当前运输业务"},
-            "receipt": {"label": "回单", "description": "签收凭证与回单跟进", "icon": "file", "roles": ROLES, "prompt": "查看待收回单"},
-            "finance": {"label": "财务", "description": "费用核查与内部对账", "icon": "money", "roles": ("dispatcher", "owner_finance"), "prompt": "查看当前费用异常"},
+            "transport": {"label": "运单", "description": "运输记录与进度", "icon": "truck", "roles": ROLES, "prompt": "查看当前运输业务", "actions": [{"kind": "link", "label": "人工录入与业务操作", "href": "/manual-v9"}]},
+            "receipt": {"label": "回单", "description": "签收凭证与回单跟进", "icon": "file", "roles": ROLES, "prompt": "查看待收回单", "actions": [{"kind": "link", "label": "人工录入与业务操作", "href": "/manual-v9", "requires": "transport"}]},
+            "finance": {"label": "财务", "description": "费用核查与内部对账", "icon": "money", "roles": ("dispatcher", "owner_finance"), "prompt": "查看当前费用异常", "actions": [{"kind": "finance_review", "label": "审阅费用与对账候选"}, {"kind": "fee_void", "label": "作废已确认费用"}]},
         },
         "business_tools": True,   # 有物流业务工具包
 }
