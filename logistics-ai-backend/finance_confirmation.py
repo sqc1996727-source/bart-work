@@ -25,6 +25,31 @@ def _table(con):
         created_at TEXT NOT NULL, result_json TEXT, completed_at TEXT)''')
 
 
+# Public, actionable explanations; never return arbitrary exception text.
+_CANDIDATE_REJECTIONS = {
+    "confirmed_fee_requires_reversal": "已确认费用不能直接退回待确认或改为有差异。本次未生成候选、未修改账本。如确需作废，请用户另行明确授权，并通过原财务审阅确认流程处理；不要自行改成作废或原样重试。",
+    "reversal_reason_required": "作废已确认费用需要明确的作废原因。",
+    "invalid_fee_update": "费用编号、目标状态或参数格式不正确，请核对后再处理。",
+    "invalid_fee_status": "费用当前状态不允许该变更，请核对记录，不要原样重试。",
+    "invalid_or_duplicate_fee_id": "费用编号不存在或不唯一，请核对记录。",
+    "invalid_fee_type": "费用类型不符合当前企业配置，请核对原始记录。",
+    "invalid_fee_waybill": "费用没有关联唯一有效运单，请先核对运单。",
+    "invalid_fee_amount": "费用金额无效，请先核对凭证。",
+    "duplicate_fee": "存在重复费用记录，请先核对，不要重复确认。",
+    "idempotency_key_required": "操作缺少有效的幂等标识，未执行。",
+    "idempotency_key_reused": "操作标识与原请求冲突，未执行。",
+}
+
+
+def candidate_rejection(exc):
+    code = str(exc)
+    if code not in _CANDIDATE_REJECTIONS:
+        code = "invalid_request"
+    return {"error": code, "message": _CANDIDATE_REJECTIONS.get(
+        code, "费用候选请求未通过校验，请核对业务记录和参数。"),
+        "candidate_created": False}
+
+
 def create(host, user, args, key):
     if user['role'] not in {'dispatcher', 'owner_finance'}: raise PermissionError('fee_update_forbidden')
     if not isinstance(args, dict) or not {'fee_id','status'} <= set(args) or set(args)-{'fee_id','status','reason'} or not isinstance(args['fee_id'], str) or not args['fee_id'].strip() or args['status'] not in {'待确认','已确认','有差异','作废'}: raise ValueError('invalid_fee_update')
