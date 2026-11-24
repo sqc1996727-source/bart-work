@@ -58,7 +58,10 @@ def job_view(host,user,jid):
  with host.db() as con:row=con.execute('SELECT * FROM agent_jobs WHERE id=? AND tenant_id=? AND owner_id=?',(jid,user['tenant_id'],user['id'])).fetchone()
  if not row or RANK[user['role']]<row['role_rank']:raise LookupError('not_found')
  result=json.loads(row['result']) if row['result'] else None
- return {'id':row['id'],'state':row['state'],'progress':row['progress'],'result':result,'updated_at':row['updated_at'],'cancel_requested':bool(row['cancel_requested'])}
+ payload=json.loads(row['payload'])
+ title=str(payload.get('text',''))[:100]
+ if user['role']=='employee' and host._v3_output_has_explicit_price(title):title='工作任务'
+ return {'id':row['id'],'state':row['state'],'progress':row['progress'],'result':result,'updated_at':row['updated_at'],'cancel_requested':bool(row['cancel_requested']),'conversation_id':payload.get('conversation_id'),'title':title}
 
 def submit(host,user,payload,key):
  if not key or len(key)>128:raise ValueError('request_key_required')
